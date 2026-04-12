@@ -23,6 +23,7 @@ class ApolloProvider:
         person_titles: list[str],
         organization_num_employees_ranges: list[str],
         q_organization_keyword_tags: list[str],
+        person_locations: list[str] | None = None,
         page: int = 1,
         per_page: int = 25,
         timeout_seconds: int = 60,
@@ -37,6 +38,8 @@ class ApolloProvider:
             "organization_num_employees_ranges": organization_num_employees_ranges,
             "q_organization_keyword_tags": q_organization_keyword_tags,
         }
+        if person_locations:
+            payload["person_locations"] = person_locations
         headers = {"x-api-key": self._key, "Content-Type": "application/json"}
         response = requests.post(
             f"{self._base}/mixed_people/search",

@@ -6,3 +6,4 @@ out/
 .cache/
 **/__pycache__/
 *.pyc
+data/apollo-contacts-export.csv

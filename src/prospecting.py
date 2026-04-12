@@ -4,7 +4,6 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlparse
 
 from .config import Settings
 from .models import Contact
@@ -105,6 +104,61 @@ class ProspectQualification:
     is_qualified: bool
 
 
+RA_ROLE_PRESETS: dict[str, list[str]] = {
+    "wealth_manager": [
+        "wealth manager",
+        "wealth advisor",
+        "private wealth advisor",
+        "financial advisor",
+    ],
+    "construction_insurance_broker": [
+        "construction insurance",
+        "commercial lines producer",
+        "risk advisor",
+        "insurance broker",
+    ],
+    "fractional_cfo": ["fractional cfo", "outsourced cfo", "virtual cfo"],
+    "eos_implementer": ["eos implementer", "implementer"],
+    "cepa_advisor": ["cepa", "exit planning advisor"],
+    "regional_banker": [
+        "commercial banker",
+        "relationship manager",
+        "business banker",
+        "svp commercial banking",
+    ],
+}
+
+
+def load_icp_profile(path: str | Path) -> ICPProfile:
+    profile_path = Path(path)
+    if not profile_path.exists():
+        profile = ICPProfile()
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(profile.to_dict(), f, indent=2)
+        return profile
+
+    with open(profile_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return ICPProfile.from_dict(data)
+
+
+def get_ra_role_titles(role_keys: list[str] | None = None) -> list[str]:
+    keys = role_keys or list(RA_ROLE_PRESETS.keys())
+    titles: list[str] = []
+    for key in keys:
+        titles.extend(RA_ROLE_PRESETS.get(key, []))
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for title in titles:
+        t = title.strip().lower()
+        if t and t not in seen:
+            seen.add(t)
+            deduped.append(title)
+    return deduped
+
+
 def _to_contact(record: dict[str, str], source: str, index: int) -> Contact:
     first = record.get("first_name", "").strip()
     last = record.get("last_name", "").strip()
@@ -131,16 +185,6 @@ def _to_contact(record: dict[str, str], source: str, index: int) -> Contact:
     )
 
 
-def _domain_from_website(website: str) -> str:
-    site = website.strip()
-    if not site:
-        return ""
-    if not site.startswith("http"):
-        site = f"https://{site}"
-    parsed = urlparse(site)
-    return parsed.netloc.lower().replace("www.", "")
-
-
 def dedupe_contacts(contacts: list[Contact]) -> list[Contact]:
     seen: set[str] = set()
     out: list[Contact] = []
@@ -157,6 +201,20 @@ def dedupe_contacts(contacts: list[Contact]) -> list[Contact]:
     return out
 
 
+def _contains_any(text: str, hints: list[str]) -> bool:
+    t = text.lower()
+    return any(h.lower() in t for h in hints)
+
+
+def _parse_int(value: str) -> int:
+    if not value:
+        return 0
+    digits = re.sub(r"[^0-9]", "", value)
+    if not digits:
+        return 0
+    return int(digits)
+
+
 def _employee_ranges_for_min(min_employees: int) -> list[str]:
     ranges = ["1,10", "11,20", "21,50", "51,100", "101,200", "201,500", "501,1000"]
     if min_employees <= 1:
@@ -164,7 +222,8 @@ def _employee_ranges_for_min(min_employees: int) -> list[str]:
     filtered: list[str] = []
     for item in ranges:
         low = int(item.split(",", maxsplit=1)[0])
-        if low >= min_employees or int(item.split(",", maxsplit=1)[1]) >= min_employees:
+        high = int(item.split(",", maxsplit=1)[1])
+        if low >= min_employees or high >= min_employees:
             filtered.append(item)
     return filtered or ranges
 
@@ -200,6 +259,7 @@ def discover_contacts(
                     person_titles=titles,
                     organization_num_employees_ranges=employee_ranges,
                     q_organization_keyword_tags=keywords,
+                    person_locations=None,
                     page=page,
                     per_page=per_page,
                     timeout_seconds=timeout_seconds,
@@ -246,32 +306,98 @@ def discover_contacts(
     return dedupe_contacts(contacts)[:limit]
 
 
-def load_icp_profile(path: str | Path) -> ICPProfile:
-    profile_path = Path(path)
-    if not profile_path.exists():
-        profile = ICPProfile()
-        profile_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(profile_path, "w", encoding="utf-8") as f:
-            json.dump(profile.to_dict(), f, indent=2)
-        return profile
+def discover_referral_advocates(
+    settings: Settings,
+    icp_profile: ICPProfile,
+    state: str,
+    limit: int,
+    role_keys: list[str] | None = None,
+    sources: list[str] | None = None,
+    hunter_domains: list[str] | None = None,
+    timeout_seconds: int = 60,
+) -> list[Contact]:
+    normalized_sources = {s.strip().lower() for s in (sources or ["apollo"])}
+    contacts: list[Contact] = []
+    index = 1
 
-    with open(profile_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return ICPProfile.from_dict(data)
+    if "apollo" in normalized_sources:
+        apollo = ApolloProvider(settings)
+        if apollo.enabled:
+            titles = get_ra_role_titles(role_keys)
+            keywords = [
+                "business owners",
+                "exit planning",
+                "succession",
+                "blue-collar",
+                "construction",
+            ]
+            employee_ranges = _employee_ranges_for_min(icp_profile.min_employee_count)
+            page = 1
 
+            while len(contacts) < limit:
+                per_page = min(25, limit - len(contacts))
+                batch = apollo.search_people(
+                    person_titles=titles,
+                    organization_num_employees_ranges=employee_ranges,
+                    q_organization_keyword_tags=keywords,
+                    person_locations=[state],
+                    page=page,
+                    per_page=per_page,
+                    timeout_seconds=timeout_seconds,
+                )
+                if not batch:
+                    break
 
-def _contains_any(text: str, hints: list[str]) -> bool:
-    t = text.lower()
-    return any(h.lower() in t for h in hints)
+                for item in batch:
+                    item["notes"] = "Sourced via Apollo RA search"
+                    contacts.append(
+                        _to_contact(item, source="prospect:apollo_ra", index=index)
+                    )
+                    index += 1
+                    if len(contacts) >= limit:
+                        break
 
+                if len(batch) < per_page:
+                    break
+                page += 1
 
-def _parse_int(value: str) -> int:
-    if not value:
-        return 0
-    digits = re.sub(r"[^0-9]", "", value)
-    if not digits:
-        return 0
-    return int(digits)
+    if "hunter" in normalized_sources and len(contacts) < limit:
+        hunter = HunterProvider(settings)
+        if hunter.enabled:
+            domains = [d.strip().lower() for d in (hunter_domains or []) if d.strip()]
+            remaining = max(0, limit - len(contacts))
+            per_domain_limit = max(1, min(10, remaining // max(1, len(domains))))
+            role_terms = [t.lower() for t in get_ra_role_titles(role_keys)]
+            for domain in domains:
+                batch = hunter.domain_search(
+                    domain=domain,
+                    limit=per_domain_limit,
+                    offset=0,
+                    timeout_seconds=timeout_seconds,
+                )
+                for item in batch:
+                    role_text = (
+                        f"{item.get('title', '')} {item.get('notes', '')}".lower()
+                    )
+                    if role_terms and not any(term in role_text for term in role_terms):
+                        continue
+                    item["notes"] = "Sourced via Hunter RA fallback"
+                    contacts.append(
+                        _to_contact(item, source="prospect:hunter_ra", index=index)
+                    )
+                    index += 1
+                    if len(contacts) >= limit:
+                        break
+                if len(contacts) >= limit:
+                    break
+
+    for contact in contacts:
+        if not contact.state:
+            contact.state = state.upper()
+        if not contact.notes:
+            contact.notes = "Referral advocate prospect"
+
+    return dedupe_contacts(contacts)[:limit]
 
 
 def qualify_contact(

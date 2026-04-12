@@ -14,7 +14,6 @@ from src.ui_service import run_campaign_pipeline
 
 load_dotenv()
 
-
 st.set_page_config(
     page_title="ForgeReach Dashboard",
     page_icon=":email:",
@@ -39,12 +38,30 @@ def _metric_delta(value: int, total: int) -> str:
     return f"{round((value / total) * 100)}%"
 
 
+def _apply_session_env(overrides: dict[str, str]) -> None:
+    for key, value in overrides.items():
+        cleaned = value.strip()
+        if cleaned:
+            os.environ[key] = cleaned
+
+
 st.title("ForgeReach Prospecting and Outreach")
 st.caption(
-    "AI-powered targeting and personalized founder-led outreach in Kory Mitchell's voice"
+    "Run CSV processing, optional API discovery, qualification, and campaign export from one place"
 )
 
 with st.sidebar:
+    st.header("Pipeline Mode")
+    mode = st.radio(
+        "Select run mode",
+        options=[
+            "CSV only",
+            "API discovery only",
+            "CSV + API merge",
+        ],
+        index=0,
+    )
+
     st.header("Run Settings")
     dry_run = st.checkbox("Dry run (no LLM API calls)", value=True)
     enrich = st.checkbox("Enable enrichment (Apollo/Apify)", value=False)
@@ -52,15 +69,15 @@ with st.sidebar:
     enrich_cache_ttl = st.number_input("Cache TTL (hours)", min_value=1, value=24)
     enrich_timeout = st.number_input("Enrichment timeout (sec)", min_value=10, value=60)
     enrich_retries = st.number_input("Enrichment retries", min_value=0, value=3)
+
+    st.header("Profiles")
     voice_profile_path = st.text_input(
         "Voice profile path",
         value="data/voice_profile.json",
-        help="Leave default unless you have a custom profile.",
     )
     icp_profile_path = st.text_input(
         "ICP profile path",
         value="data/icp_profile.json",
-        help="Profile used to qualify targets.",
     )
     min_qualification_score = st.slider(
         "Minimum qualification score",
@@ -69,8 +86,13 @@ with st.sidebar:
         value=60,
     )
 
-    st.subheader("Prospecting (Phase 2)")
-    prospect = st.checkbox("Enable API prospect discovery", value=False)
+    st.header("Prospecting")
+    referral_advocates_only = st.checkbox(
+        "Referral advocates only",
+        value=True,
+        help="Audience B mode for trusted advisor sourcing",
+    )
+    state = st.text_input("State filter", value="CO")
     prospect_sources = st.multiselect(
         "Prospecting sources",
         options=["apollo", "hunter"],
@@ -80,48 +102,76 @@ with st.sidebar:
     hunter_domains_input = st.text_input(
         "Hunter domains (comma-separated)",
         value="",
-        help="Used when Hunter source is selected.",
     )
 
+    with st.expander("API keys (session only)"):
+        st.caption("Optional: overrides .env for this app session only")
+        openrouter_key = st.text_input("OPENROUTER_API_KEY", type="password")
+        apollo_key = st.text_input("APOLLO_API_KEY", type="password")
+        hunter_key = st.text_input("HUNTER_API_KEY", type="password")
+        apify_token = st.text_input("APIFY_API_TOKEN", type="password")
+        apify_actor = st.text_input("APIFY_LINKEDIN_ACTOR_ID")
+
 st.subheader("Configuration Health")
-cfg_cols = st.columns(3)
-cfg_cols[0].metric(
+cfg1 = st.columns(4)
+cfg1[0].metric(
     "OpenRouter", "Configured" if _env_ok("OPENROUTER_API_KEY") else "Missing"
 )
-cfg_cols[1].metric("Apollo", "Configured" if _env_ok("APOLLO_API_KEY") else "Missing")
-cfg_cols[2].metric(
+cfg1[1].metric("Apollo", "Configured" if _env_ok("APOLLO_API_KEY") else "Missing")
+cfg1[2].metric("Hunter", "Configured" if _env_ok("HUNTER_API_KEY") else "Missing")
+cfg1[3].metric(
     "Apify",
     "Configured"
     if (_env_ok("APIFY_API_TOKEN") and _env_ok("APIFY_LINKEDIN_ACTOR_ID"))
     else "Missing",
 )
-cfg_cols2 = st.columns(3)
-cfg_cols2[0].metric("Hunter", "Configured" if _env_ok("HUNTER_API_KEY") else "Missing")
-cfg_cols2[1].metric("Prospecting", "On" if prospect else "Off")
-cfg_cols2[2].metric("Dry Run", "On" if dry_run else "Off")
 
-st.subheader("Prospect Input")
-uploaded = st.file_uploader(
-    "Upload contacts CSV",
+cfg2 = st.columns(4)
+cfg2[0].metric("Mode", mode)
+cfg2[1].metric("RA Mode", "On" if referral_advocates_only else "Off")
+cfg2[2].metric("State", state.upper() if state else "CO")
+cfg2[3].metric("Dry Run", "On" if dry_run else "Off")
+
+st.subheader("CSV Inputs")
+uploaded_files = st.file_uploader(
+    "Upload one or more CSV files",
     type=["csv"],
-    help="Use Apollo/LinkedIn/Hunter style exports.",
+    accept_multiple_files=True,
 )
 
+use_sample_default = mode == "CSV only" and not uploaded_files
 use_sample = st.checkbox(
-    "Use sample file (data/sample_contacts.csv)", value=not bool(uploaded)
+    "Use sample file (data/sample_contacts.csv)",
+    value=use_sample_default,
 )
 
 run_clicked = st.button("Run Campaign Build", type="primary")
 
 if run_clicked:
+    _apply_session_env(
+        {
+            "OPENROUTER_API_KEY": openrouter_key,
+            "APOLLO_API_KEY": apollo_key,
+            "HUNTER_API_KEY": hunter_key,
+            "APIFY_API_TOKEN": apify_token,
+            "APIFY_LINKEDIN_ACTOR_ID": apify_actor,
+        }
+    )
+
     input_paths: list[str] = []
-    if uploaded:
+    for uploaded in uploaded_files or []:
         input_paths.append(_save_uploaded_csv(uploaded))
     if use_sample:
         input_paths.append("data/sample_contacts.csv")
 
-    if not input_paths:
-        st.error("Please upload a CSV or enable sample file.")
+    prospect = mode in {"API discovery only", "CSV + API merge"}
+
+    if mode == "CSV only" and not input_paths:
+        st.error("Upload at least one CSV or enable sample file.")
+    elif mode == "CSV + API merge" and not input_paths:
+        st.error("CSV + API merge mode needs at least one CSV input.")
+    elif not prospect_sources and prospect:
+        st.error("Select at least one prospect source for API discovery.")
     else:
         with st.spinner("Running pipeline..."):
             try:
@@ -142,6 +192,8 @@ if run_clicked:
                     hunter_domains=[
                         d.strip() for d in hunter_domains_input.split(",") if d.strip()
                     ],
+                    referral_advocates_only=referral_advocates_only,
+                    state=state,
                 )
 
                 df = pd.read_csv(result.output_path)
@@ -150,77 +202,71 @@ if run_clicked:
                 st.success("Campaign build complete.")
 
                 st.subheader("Executive Summary")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Total Contacts", report["total_contacts"])
-                c2.metric(
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Total Contacts", report["total_contacts"])
+                m2.metric(
                     "Enriched",
                     report["enriched_count"],
                     delta=_metric_delta(
                         report["enriched_count"], report["total_contacts"]
                     ),
                 )
-                c3.metric(
+                m3.metric(
                     "Qualified",
                     report["qualified_count"],
                     delta=_metric_delta(
                         report["qualified_count"], report["total_contacts"]
                     ),
                 )
-                c4.metric("High Priority", report["high_priority_count"])
+                m4.metric("High Priority", report["high_priority_count"])
 
-                c5, c6 = st.columns(2)
-                c5.metric("Review Flagged", report["review_flagged_count"])
-                c6.metric("Avg Fit Score", report["avg_fit_score"])
+                m5, m6 = st.columns(2)
+                m5.metric("Review Flagged", report["review_flagged_count"])
+                m6.metric("Avg Fit Score", report["avg_fit_score"])
 
                 st.subheader("Audience Split")
-                if "audience" in df.columns and not df.empty:
-                    audience_counts = (
-                        df["audience"].value_counts().rename_axis("audience")
-                    )
-                    st.bar_chart(audience_counts)
+                if not df.empty and "audience" in df.columns:
+                    st.bar_chart(df["audience"].value_counts().rename_axis("audience"))
+                else:
+                    st.info("No rows returned for this run.")
 
                 st.subheader("Campaign Review")
-                audience_filter = st.multiselect(
-                    "Filter by audience",
-                    options=sorted(df["audience"].dropna().unique().tolist())
-                    if "audience" in df.columns
-                    else [],
-                    default=sorted(df["audience"].dropna().unique().tolist())
-                    if "audience" in df.columns
-                    else [],
-                )
-
                 view_df = df.copy()
-                if audience_filter and "audience" in view_df.columns:
-                    view_df = view_df[view_df["audience"].isin(audience_filter)]
+
+                if "audience" in view_df.columns and not view_df.empty:
+                    selected_audiences = st.multiselect(
+                        "Filter by audience",
+                        options=sorted(view_df["audience"].dropna().unique().tolist()),
+                        default=sorted(view_df["audience"].dropna().unique().tolist()),
+                    )
+                    if selected_audiences:
+                        view_df = view_df[view_df["audience"].isin(selected_audiences)]
 
                 only_qualified = st.checkbox("Only qualified targets", value=True)
                 if only_qualified and "qualified" in view_df.columns:
                     view_df = view_df[view_df["qualified"] == "yes"]
 
-                st.dataframe(
-                    view_df[
-                        [
-                            "full_name",
-                            "company",
-                            "audience",
-                            "fit_score",
-                            "qualified",
-                            "qualification_score",
-                            "qualification_tier",
-                            "review_flag",
-                            "validation_passed",
-                        ]
+                if view_df.empty:
+                    st.warning("No contacts match current filters.")
+                else:
+                    preview_cols = [
+                        "full_name",
+                        "company",
+                        "email",
+                        "audience",
+                        "fit_score",
+                        "qualified",
+                        "qualification_score",
+                        "qualification_tier",
+                        "review_flag",
+                        "validation_passed",
                     ]
-                    if not view_df.empty
-                    else view_df,
-                    use_container_width=True,
-                )
+                    available_cols = [c for c in preview_cols if c in view_df.columns]
+                    st.dataframe(view_df[available_cols], use_container_width=True)
 
-                st.subheader("Sequence Preview")
-                if not view_df.empty:
+                    st.subheader("Sequence Preview")
                     idx = st.selectbox(
-                        "Select row",
+                        "Select contact",
                         options=view_df.index.tolist(),
                         format_func=lambda i: (
                             f"{view_df.loc[i, 'full_name']} - {view_df.loc[i, 'company']}"
@@ -232,10 +278,10 @@ if run_clicked:
                     st.markdown(f"**Step 3**\n\n{selected.get('email_step_3', '')}")
 
                 st.subheader("Download")
-                csv_bytes = df.to_csv(index=False).encode("utf-8")
+                campaign_bytes = df.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     label="Download campaign_ready.csv",
-                    data=csv_bytes,
+                    data=campaign_bytes,
                     file_name="campaign_ready.csv",
                     mime="text/csv",
                 )

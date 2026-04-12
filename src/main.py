@@ -10,7 +10,11 @@ from .enrichment import EnrichmentConfig
 from .exporters import export_instantly_campaign
 from .openrouter_client import OpenRouterClient
 from .pipeline import run_pipeline
-from .prospecting import discover_contacts, load_icp_profile
+from .prospecting import (
+    discover_contacts,
+    discover_referral_advocates,
+    load_icp_profile,
+)
 from .voice_profile import get_voice_profile
 
 
@@ -52,6 +56,11 @@ Examples:
         help="Discover net-new contacts from configured APIs (Apollo/Hunter)",
     )
     prospecting_group.add_argument(
+        "--prospect-referral-advocates",
+        action="store_true",
+        help="Referral-advocate-only discovery flow (API only)",
+    )
+    prospecting_group.add_argument(
         "--prospect-source",
         nargs="+",
         default=["apollo"],
@@ -69,6 +78,12 @@ Examples:
         nargs="*",
         default=[],
         help="Optional domains for Hunter discovery (e.g., acme.com)",
+    )
+    prospecting_group.add_argument(
+        "--state",
+        type=str,
+        default="CO",
+        help="State filter for referral advocate discovery (default: CO)",
     )
 
     # Dry run mode
@@ -167,9 +182,9 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
     llm = OpenRouterClient(settings)
 
-    if not args.input and not args.prospect:
+    if not args.input and not args.prospect and not args.prospect_referral_advocates:
         print(
-            "Pipeline failed: provide --input CSV(s) or use --prospect for net-new discovery",
+            "Pipeline failed: provide --input CSV(s) or use --prospect/--prospect-referral-advocates",
             file=sys.stderr,
         )
         return 1
@@ -219,7 +234,35 @@ def main(argv: list[str] | None = None) -> int:
 
     seed_contacts = None
     input_paths = list(args.input)
-    if args.prospect:
+    if args.prospect_referral_advocates:
+        discovered = discover_referral_advocates(
+            settings=settings,
+            icp_profile=icp_profile,
+            state=args.state,
+            limit=args.prospect_limit,
+            sources=args.prospect_source,
+            hunter_domains=args.hunter_domain,
+            timeout_seconds=args.enrich_timeout,
+        )
+        seed_contacts = discovered
+        if args.verbose:
+            print(
+                f"Referral advocate discovery found {len(discovered)} contacts in {args.state.upper()}"
+            )
+
+        if input_paths:
+            from .ingest import read_contacts
+            from .prospecting import dedupe_contacts
+
+            merged_contacts = discovered + read_contacts(input_paths)
+            seed_contacts = dedupe_contacts(merged_contacts)
+            if args.verbose:
+                print(
+                    f"Merged discovered + CSV contacts: {len(seed_contacts)} unique total"
+                )
+
+        input_paths = []
+    elif args.prospect:
         discovered = discover_contacts(
             settings=settings,
             icp_profile=icp_profile,

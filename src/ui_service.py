@@ -8,7 +8,12 @@ from .config import load_settings
 from .enrichment import EnrichmentConfig
 from .openrouter_client import OpenRouterClient
 from .pipeline import PipelineRunReport, run_pipeline
-from .prospecting import dedupe_contacts, discover_contacts, load_icp_profile
+from .prospecting import (
+    dedupe_contacts,
+    discover_contacts,
+    discover_referral_advocates,
+    load_icp_profile,
+)
 from .ingest import read_contacts
 from .voice_profile import get_voice_profile, reset_voice_profile
 
@@ -34,6 +39,8 @@ def run_campaign_pipeline(
     prospect_sources: list[str] | None = None,
     prospect_limit: int = 25,
     hunter_domains: list[str] | None = None,
+    referral_advocates_only: bool = False,
+    state: str = "CO",
 ) -> DashboardRunResult:
     settings = load_settings()
     llm = OpenRouterClient(settings)
@@ -62,14 +69,25 @@ def run_campaign_pipeline(
 
     seed_contacts = None
     if prospect:
-        discovered = discover_contacts(
-            settings=settings,
-            icp_profile=icp_profile,
-            sources=prospect_sources or ["apollo"],
-            limit=prospect_limit,
-            hunter_domains=hunter_domains or [],
-            timeout_seconds=enrich_timeout,
-        )
+        if referral_advocates_only:
+            discovered = discover_referral_advocates(
+                settings=settings,
+                icp_profile=icp_profile,
+                state=state,
+                limit=prospect_limit,
+                sources=prospect_sources or ["apollo"],
+                hunter_domains=hunter_domains or [],
+                timeout_seconds=enrich_timeout,
+            )
+        else:
+            discovered = discover_contacts(
+                settings=settings,
+                icp_profile=icp_profile,
+                sources=prospect_sources or ["apollo"],
+                limit=prospect_limit,
+                hunter_domains=hunter_domains or [],
+                timeout_seconds=enrich_timeout,
+            )
         seed_contacts = discovered
         if input_paths:
             seed_contacts = dedupe_contacts(discovered + read_contacts(input_paths))

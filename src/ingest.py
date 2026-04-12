@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -8,15 +9,70 @@ from .models import Contact
 
 
 ALIASES = {
-    "first_name": {"first_name", "firstname", "first name", "owner_first_name"},
-    "last_name": {"last_name", "lastname", "last name", "owner_last_name"},
-    "full_name": {"name", "full_name", "full name", "owner name", "contact name"},
-    "title": {"title", "job_title", "job title", "role", "position"},
-    "company": {"company", "company_name", "company name", "account"},
-    "email": {"email", "email_address", "work_email", "business email"},
+    "first_name": {
+        "first_name",
+        "firstname",
+        "first name",
+        "owner_first_name",
+        "person first name",
+    },
+    "last_name": {
+        "last_name",
+        "lastname",
+        "last name",
+        "owner_last_name",
+        "person last name",
+    },
+    "full_name": {
+        "name",
+        "full_name",
+        "full name",
+        "owner name",
+        "contact name",
+        "person name",
+    },
+    "title": {
+        "title",
+        "job_title",
+        "job title",
+        "role",
+        "position",
+        "person title",
+        "person job title",
+    },
+    "company": {
+        "company",
+        "company_name",
+        "company name",
+        "account",
+        "account name",
+        "organization",
+        "organization name",
+    },
+    "email": {
+        "email",
+        "email_address",
+        "work_email",
+        "business email",
+        "email work",
+    },
     "industry": {"industry", "vertical", "sector"},
-    "website": {"website", "company_website", "domain", "url"},
-    "linkedin": {"linkedin", "linkedin_url", "linkedin profile", "profile_url"},
+    "website": {
+        "website",
+        "company_website",
+        "domain",
+        "url",
+        "organization website",
+        "company domain",
+    },
+    "linkedin": {
+        "linkedin",
+        "linkedin_url",
+        "linkedin profile",
+        "profile_url",
+        "person linkedin url",
+        "linkedin url",
+    },
     "city": {"city", "town"},
     "state": {"state", "province", "region"},
     "notes": {"notes", "description", "bio", "about"},
@@ -33,7 +89,19 @@ ALIASES = {
 
 
 def _canon(s: str) -> str:
-    return s.strip().lower().replace("_", " ")
+    normalized = s.strip().lower().replace("_", " ")
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def _split_full_name(full_name: str) -> tuple[str, str]:
+    tokens = [t for t in full_name.strip().split(" ") if t]
+    if not tokens:
+        return "", ""
+    if len(tokens) == 1:
+        return tokens[0], ""
+    return tokens[0], " ".join(tokens[1:])
 
 
 def _field_value(row: dict[str, str], normalized_map: dict[str, str], key: str) -> str:
@@ -66,6 +134,8 @@ def read_contacts(csv_paths: list[str]) -> list[Contact]:
                 full_name = _field_value(row, mapped, "full_name")
                 if not full_name:
                     full_name = f"{first_name} {last_name}".strip()
+                elif not first_name and not last_name:
+                    first_name, last_name = _split_full_name(full_name)
                 contacts.append(
                     Contact(
                         row_id=f"{source}:{idx}",
