@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "name": "Kory Mitchell",
+  "tone_traits": [
+    "plainspoken",
+    "respectful",
+    "blue-collar operator credibility",
+    "no hype"
+  ],
+  "sentence_patterns": [
+    "Direct opening with name",
+    "Short declarative statements",
+    "Specific examples over generalities",
+    "Questions as CTAs"
+  ],
+  "phrase_preferences": [
+    "I run",
+    "spend most of my time with",
+    "blue-collar founders",
+    "compare notes",
+    "tighten operations",
+    "exit-ready story",
+    "founder-to-founder",
+    "low-pressure conversation"
+  ],
+  "taboo_phrases": [
+    "just checking in",
+    "hope you're well",
+    "circle back",
+    "touch base",
+    "quick question",
+    "following up",
+    "best regards",
+    "kind regards",
+    "sincerely"
+  ],
+  "cta_style": "single direct question, low pressure, specific",
+  "signature_style": "dash + first and last name",
+  "style_exemplars": [
+    {
+      "context": "referral_advocate_step_1",
+      "exemplar": "I run IFG and spend most of my time with blue-collar founders thinking about growth and exit timing."
+    },
+    {
+      "context": "owner_step_1",
+      "exemplar": "I am Kory Mitchell. I built my career in blue-collar businesses and now advise founders through IFG on growth and eventual exits."
+    },
+    {
+      "context": "value_prop",
+      "exemplar": "We help them tighten operations and narrative before they ever go to market."
+    }
+  ],
+  "min_words": 80,
+  "max_words": 150,
+  "min_cta_questions": 1,
+  "max_cta_questions": 1
+}

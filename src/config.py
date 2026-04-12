@@ -14,6 +14,7 @@ class Settings:
     openrouter_http_referer: str
     openrouter_title: str
     apollo_api_key: str
+    hunter_api_key: str
     apify_api_token: str
     apify_linkedin_actor_id: str
 
@@ -31,6 +32,7 @@ def load_settings() -> Settings:
         ),
         openrouter_title=os.getenv("OPENROUTER_TITLE", "ForgeReach"),
         apollo_api_key=os.getenv("APOLLO_API_KEY", ""),
+        hunter_api_key=os.getenv("HUNTER_API_KEY", ""),
         apify_api_token=os.getenv("APIFY_API_TOKEN", ""),
         apify_linkedin_actor_id=os.getenv("APIFY_LINKEDIN_ACTOR_ID", ""),
     )

@@ -1,0 +1,50 @@
+{
+  "name": "IFG Blue-Collar Growth",
+  "target_industry_keywords": [
+    "roof",
+    "hvac",
+    "plumb",
+    "electrical",
+    "contractor",
+    "construction",
+    "industrial",
+    "landscap",
+    "home service"
+  ],
+  "target_owner_title_keywords": [
+    "owner",
+    "founder",
+    "president",
+    "ceo",
+    "partner",
+    "principal"
+  ],
+  "target_referral_title_keywords": [
+    "advisor",
+    "fractional cfo",
+    "wealth",
+    "banker",
+    "broker",
+    "consultant",
+    "insurance",
+    "eos",
+    "cepa"
+  ],
+  "target_states": [
+    "TX",
+    "TN",
+    "FL",
+    "GA",
+    "NC",
+    "SC"
+  ],
+  "excluded_keywords": [
+    "student",
+    "intern",
+    "recruiter",
+    "software engineer",
+    "product manager"
+  ],
+  "min_employee_count": 5,
+  "min_revenue": 0
+}
