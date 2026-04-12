@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 from .enrichment import EnrichmentConfig, EnrichmentOrchestrator
 from .ingest import read_contacts
 from .messaging import generate_sequence
-from .models import Contact, EnrichmentResult, GeneratedSequence
+from .models import ClassifiedContact, Contact, EnrichmentResult, GeneratedSequence
 from .openrouter_client import OpenRouterClient
 from .prospecting import load_icp_profile, qualify_contact
 from .schedule import suggest_send_times
@@ -71,6 +72,71 @@ def _get_provenance_fields(contact) -> dict[str, str]:
     }
 
 
+def _process_contact(
+    result: EnrichmentResult,
+    llm: OpenRouterClient,
+    dry_run: bool,
+    icp_profile,
+    min_qualification_score: int,
+    use_master_persona: bool,
+    master_persona_path: str,
+    few_shot_k: int,
+) -> dict[str, Any]:
+    """Run classify + qualify + generate + schedule for a single contact.
+
+    Returns a dict with the per-contact computed values; the caller is
+    responsible for aggregating counters and writing rows in order.
+    """
+    contact = result.contact
+
+    classified = classify(contact)
+
+    qualification = qualify_contact(
+        contact=contact,
+        audience=classified.audience,
+        fit_score=classified.fit_score,
+        icp_profile=icp_profile,
+        min_qualification_score=min_qualification_score,
+        fit_breakdown=classified.fit_breakdown,
+    )
+
+    generation_error: str | None = None
+    try:
+        sequence = generate_sequence(
+            classified,
+            llm,
+            dry_run=dry_run,
+            use_master_persona=use_master_persona,
+            master_persona_path=master_persona_path,
+            few_shot_k=few_shot_k,
+        )
+    except Exception as e:
+        generation_error = f"{contact.row_id}: {str(e)}"
+        sequence = GeneratedSequence(
+            step_1=f"[Generation failed: {str(e)}]",
+            step_2="",
+            step_3="",
+            subject_1="",
+            subject_2="",
+            subject_3="",
+            voice_profile_version="error",
+            generation_method="error",
+            validation_passed=False,
+            validation_errors=[str(e)],
+        )
+
+    send1, send2, send3 = suggest_send_times()
+
+    return {
+        "contact": contact,
+        "classified": classified,
+        "qualification": qualification,
+        "sequence": sequence,
+        "send_times": (send1, send2, send3),
+        "generation_error": generation_error,
+    }
+
+
 def run_pipeline(
     input_paths: list[str],
     output_path: str,
@@ -84,6 +150,7 @@ def run_pipeline(
     use_master_persona: bool = True,
     master_persona_path: str = "MASTER.md",
     few_shot_k: int = 3,
+    max_workers: int = 10,
 ) -> tuple[int, PipelineRunReport]:
     """
     Run the full pipeline from ingestion to output.
@@ -97,6 +164,8 @@ def run_pipeline(
         dry_run: Skip API calls and use deterministic outputs
         enrich: Enable API enrichment stage
         enrichment_config: Configuration for enrichment
+        max_workers: Max threads for per-contact parallel work (classify +
+            qualify + generate + schedule). Defaults to 10.
 
     Returns:
         Tuple of (contact_count, run_report)
@@ -154,7 +223,7 @@ def run_pipeline(
             for c in contacts
         ]
 
-    # Stage 3-5: Classify, Generate, Schedule -> Export
+    # Stage 3-5: Classify, Generate, Schedule (parallel) -> Export (serial, ordered)
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -180,8 +249,11 @@ def run_pipeline(
         "matched_signals",
         "owner_readiness_tier",
         "owner_readiness_confidence",
+        "subject_step_1",
         "email_step_1",
+        "subject_step_2",
         "email_step_2",
+        "subject_step_3",
         "email_step_3",
         "send_at_step_1",
         "send_at_step_2",
@@ -203,18 +275,59 @@ def run_pipeline(
         "validation_errors",
     ]
 
-    fit_scores = []
+    # Run per-contact work in parallel, preserving the original order.
+    # For dry-run or a single contact we avoid the thread pool overhead so
+    # dry-run stays fast and deterministic with no scheduling variance.
+    processed: list[dict[str, Any]] = [None] * len(enrichment_results)  # type: ignore[list-item]
+    effective_workers = max(1, int(max_workers))
+
+    if dry_run or len(enrichment_results) <= 1 or effective_workers == 1:
+        for i, r in enumerate(enrichment_results):
+            processed[i] = _process_contact(
+                r,
+                llm,
+                dry_run,
+                icp_profile,
+                min_qualification_score,
+                use_master_persona,
+                master_persona_path,
+                few_shot_k,
+            )
+    else:
+        with ThreadPoolExecutor(max_workers=effective_workers) as pool:
+            futures = {
+                pool.submit(
+                    _process_contact,
+                    r,
+                    llm,
+                    dry_run,
+                    icp_profile,
+                    min_qualification_score,
+                    use_master_persona,
+                    master_persona_path,
+                    few_shot_k,
+                ): i
+                for i, r in enumerate(enrichment_results)
+            }
+            for fut in futures:
+                idx = futures[fut]
+                processed[idx] = fut.result()
+
+    fit_scores: list[int] = []
     count = 0
 
     with open(output, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
 
-        for result in enrichment_results:
-            contact = result.contact
+        for item in processed:
+            contact: Contact = item["contact"]
+            classified: ClassifiedContact = item["classified"]
+            qualification = item["qualification"]
+            sequence: GeneratedSequence = item["sequence"]
+            send1, send2, send3 = item["send_times"]
+            generation_error = item["generation_error"]
 
-            # Classify
-            classified = classify(contact)
             fit_scores.append(classified.fit_score)
 
             if classified.audience == "owner":
@@ -229,53 +342,19 @@ def run_pipeline(
             elif classified.audience == "referral_advocate":
                 report.referral_advocate_count += 1
 
-            qualification = qualify_contact(
-                contact=contact,
-                audience=classified.audience,
-                fit_score=classified.fit_score,
-                icp_profile=icp_profile,
-                min_qualification_score=min_qualification_score,
-                fit_breakdown=classified.fit_breakdown,
-            )
-
             if qualification.is_qualified:
                 report.qualified_count += 1
             if qualification.tier == "high":
                 report.high_priority_count += 1
 
-            # Generate sequence
-            try:
-                sequence = generate_sequence(
-                    classified,
-                    llm,
-                    dry_run=dry_run,
-                    use_master_persona=use_master_persona,
-                    master_persona_path=master_persona_path,
-                    few_shot_k=few_shot_k,
-                )
-            except Exception as e:
-                report.generation_failures.append(f"{contact.row_id}: {str(e)}")
-                # Use fallback sequence
-                sequence = GeneratedSequence(
-                    step_1=f"[Generation failed: {str(e)}]",
-                    step_2="",
-                    step_3="",
-                    voice_profile_version="error",
-                    generation_method="error",
-                    validation_passed=False,
-                    validation_errors=[str(e)],
-                )
+            if generation_error:
+                report.generation_failures.append(generation_error)
 
-            # Schedule
-            send1, send2, send3 = suggest_send_times()
-
-            # Review flag logic
             needs_review = classified.fit_score < 55 or not sequence.validation_passed
             review_flag = "yes" if needs_review else "no"
             if needs_review:
                 report.review_flagged_count += 1
 
-            # Provenance
             provenance = _get_provenance_fields(contact)
 
             writer.writerow(
@@ -301,8 +380,11 @@ def run_pipeline(
                     "matched_signals": "; ".join(classified.matched_signals),
                     "owner_readiness_tier": qualification.owner_readiness_tier,
                     "owner_readiness_confidence": qualification.owner_readiness_confidence,
+                    "subject_step_1": sequence.subject_1,
                     "email_step_1": sequence.step_1,
+                    "subject_step_2": sequence.subject_2,
                     "email_step_2": sequence.step_2,
+                    "subject_step_3": sequence.subject_3,
                     "email_step_3": sequence.step_3,
                     "send_at_step_1": send1,
                     "send_at_step_2": send2,
