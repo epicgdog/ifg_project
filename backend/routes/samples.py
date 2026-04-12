@@ -45,12 +45,14 @@ def get_samples() -> dict[str, object]:
             if len(samples) >= 10:
                 break
             record = {k: row.get(k, "") for k in SAMPLE_FIELDS}
-            # Fallback: derive subject from email body if not in CSV
+            # Prefer canonical pipeline column names (subject_step_N);
+            # fall back to deriving from body only if missing.
             for i in (1, 2, 3):
                 s_key = f"subject_{i}"
+                step_key = f"subject_step_{i}"
                 b_key = f"email_step_{i}"
                 if not record.get(s_key):
-                    record[s_key] = _extract_subject(row.get(b_key, ""))
+                    record[s_key] = row.get(step_key, "") or _extract_subject(row.get(b_key, ""))
             samples.append(record)
 
     return {"samples": samples}
