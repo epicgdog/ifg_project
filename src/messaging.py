@@ -130,7 +130,7 @@ Data Sources:
 {provenance_text}
 
 Output Requirements:
-- Output ONLY valid JSON with keys step_1, step_2, step_3
+- Output ONLY valid JSON with keys subject_1, subject_2, subject_3, step_1, step_2, step_3
 - Each step must be 80-150 words
 - Each step must have exactly one CTA question
 - Keep it human, specific, and direct
@@ -138,8 +138,13 @@ Output Requirements:
 - Avoid copying any example sentence verbatim
 - Sign as: {voice_profile.name}
 
+Subject Line Requirements:
+- Each subject_1/2/3 is 4-8 words, plain sentence case, no emojis
+- Do NOT use "Quick question", "Following up", or "Re:" anywhere
+- Subjects should feel specific to the recipient (reference their work, vertical, or situation) rather than generic
+
 JSON Output:
-{{"step_1":"...","step_2":"...","step_3":"..."}}
+{{"subject_1":"...","subject_2":"...","subject_3":"...","step_1":"...","step_2":"...","step_3":"..."}}
 """.strip()
 
     return prompt
@@ -154,7 +159,8 @@ def build_system_prompt(voice_profile: Any | None = None) -> str:
         f"You write concise founder-led outbound emails in the style of {voice_profile.name}. "
         "Voice: plainspoken, respectful, blue-collar operator credibility, no hype. "
         "No fluff, no fake claims, no generic mass-email phrasing. "
-        "Output strict JSON with keys step_1, step_2, step_3 and string values only."
+        "Output strict JSON with keys subject_1, subject_2, subject_3, step_1, step_2, step_3 "
+        "and string values only."
     )
 
 
@@ -165,12 +171,18 @@ def _generate_dry_run_sequence(item: ClassifiedContact) -> dict[str, str]:
 
     if item.audience == "referral_advocate":
         return {
+            "subject_1": "Comparing notes on owner profiles",
+            "subject_2": "A pattern advisors pass to clients",
+            "subject_3": "One-page overview for your team",
             "step_1": f"{name}, I run IFG and spend most of my time with blue-collar founders thinking about growth and exit timing. Your work puts you close to owners making big decisions, so I wanted to introduce myself directly. Would you be open to a short call to compare notes on what these owners are asking for most right now?\n\n- {voice.name}",
             "step_2": f"{name}, one thing we see often is owners waiting too long to prepare for transition, then losing leverage. We help them tighten operations and narrative before they ever go to market. If useful, I can share a simple pattern we use that advisors pass to clients early. Worth sending over?\n\n- {voice.name}",
             "step_3": f"{name}, if referral conversations are easier with context, I can send a one-page overview of the exact founder profile where IFG is most helpful, where we are not, and the types of owners who usually engage after one intro call. Would that be useful for you and your team this quarter?\n\n- {voice.name}",
         }
 
     return {
+        "subject_1": "Founder-to-founder intro on your market",
+        "subject_2": "Two practical moves owners are using",
+        "subject_3": "Twenty minutes on 12-24 month leverage",
         "step_1": f"{name}, I am {voice.name}. I built my career in blue-collar businesses and now advise founders through IFG on growth and eventual exits. Your company stood out to me because operator-led businesses in your space are creating real value right now. Open to a short founder-to-founder call to compare what is working in your market?\n\n- {voice.name}",
         "step_2": f"{name}, one thing I hear from owners repeatedly is they are strong operationally but have not translated that into a clear exit-ready story. We help tighten that gap while the business keeps growing. If helpful, I can send two practical moves owners are using this quarter. Want me to send them?\n\n- {voice.name}",
         "step_3": f"{name}, I know timing has to be right for this kind of conversation. If now is not ideal, no issue. If it is, we can keep it simple and spend 20 minutes on where your business sits today and what could improve leverage over the next 12-24 months. Worth putting on the calendar?\n\n- {voice.name}",

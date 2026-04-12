@@ -116,3 +116,6 @@ class GeneratedSequence:
     generation_method: str  # "static" | "rag" (for future)
     validation_passed: bool = False
     validation_errors: list[str] = field(default_factory=list)
+    subject_1: str = ""
+    subject_2: str = ""
+    subject_3: str = ""

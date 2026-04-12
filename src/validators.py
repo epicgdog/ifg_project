@@ -124,6 +124,55 @@ class SequenceValidator:
             },
         )
 
+    # Subject-line banned phrases / patterns (case-insensitive).
+    SUBJECT_BANNED_PHRASES = ("quick question", "following up")
+
+    def validate_subject(
+        self, subject: str, subject_name: str
+    ) -> ValidationResult:
+        """Validate a single subject line (presence, banned phrases, format)."""
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        text = (subject or "").strip()
+        if not text:
+            errors.append(f"{subject_name}: Missing subject line")
+            return ValidationResult(passed=False, errors=errors, warnings=warnings)
+
+        lower = text.lower()
+        for phrase in self.SUBJECT_BANNED_PHRASES:
+            if phrase in lower:
+                errors.append(
+                    f"{subject_name}: Contains banned phrase '{phrase}'"
+                )
+
+        # "Re:" prefix (case-insensitive, tolerate surrounding space).
+        if re.match(r"^\s*re\s*:", text, flags=re.IGNORECASE):
+            errors.append(f"{subject_name}: Must not start with 'Re:'")
+
+        # Emoji / non-BMP pictograph check (very conservative: flag any character
+        # outside basic Latin + common punctuation ranges commonly found in
+        # English subject lines).
+        if any(ord(ch) > 0x2BFF for ch in text):
+            errors.append(f"{subject_name}: Contains emoji or pictograph")
+
+        word_count = len(text.split())
+        if word_count < 4:
+            errors.append(
+                f"{subject_name}: Too short ({word_count} words, min 4)"
+            )
+        elif word_count > 8:
+            errors.append(
+                f"{subject_name}: Too long ({word_count} words, max 8)"
+            )
+
+        return ValidationResult(
+            passed=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            metrics={"word_count": word_count},
+        )
+
     def validate_sequence(
         self, sequence: dict[str, str], strict: bool = True
     ) -> GeneratedSequence:
@@ -145,10 +194,23 @@ class SequenceValidator:
 
             validated_steps[step_name] = step_text
 
+        # Subject line validation
+        subjects = ["subject_1", "subject_2", "subject_3"]
+        validated_subjects: dict[str, str] = {}
+        for subject_name in subjects:
+            subject_text = sequence.get(subject_name, "")
+            result = self.validate_subject(subject_text, subject_name)
+            all_errors.extend(result.errors)
+            all_warnings.extend(result.warnings)
+            validated_subjects[subject_name] = subject_text
+
         return GeneratedSequence(
             step_1=validated_steps["step_1"],
             step_2=validated_steps["step_2"],
             step_3=validated_steps["step_3"],
+            subject_1=validated_subjects["subject_1"],
+            subject_2=validated_subjects["subject_2"],
+            subject_3=validated_subjects["subject_3"],
             voice_profile_version=self.profile.version,
             generation_method="static",  # Will be "rag" when RAG is implemented
             validation_passed=len(all_errors) == 0,
@@ -159,7 +221,14 @@ class SequenceValidator:
 class JSONValidator:
     """Validates LLM output structure."""
 
-    REQUIRED_KEYS = ["step_1", "step_2", "step_3"]
+    REQUIRED_KEYS = [
+        "step_1",
+        "step_2",
+        "step_3",
+        "subject_1",
+        "subject_2",
+        "subject_3",
+    ]
 
     @classmethod
     def validate_structure(cls, data: dict[str, Any]) -> ValidationResult:
