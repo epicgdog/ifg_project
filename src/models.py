@@ -90,6 +90,8 @@ class ClassifiedContact:
     audience_reason: str
     fit_score: int
     fit_reason: str
+    fit_breakdown: dict[str, Any] = field(default_factory=dict)
+    matched_signals: list[str] = field(default_factory=list)
 
 
 @dataclass

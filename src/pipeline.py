@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,9 @@ class PipelineRunReport:
     cache_hits: int = 0
     qualified_count: int = 0
     high_priority_count: int = 0
+    owner_count: int = 0
+    referral_advocate_count: int = 0
+    owner_high_readiness_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +47,9 @@ class PipelineRunReport:
             "cache_hits": self.cache_hits,
             "qualified_count": self.qualified_count,
             "high_priority_count": self.high_priority_count,
+            "owner_count": self.owner_count,
+            "referral_advocate_count": self.referral_advocate_count,
+            "owner_high_readiness_count": self.owner_high_readiness_count,
         }
 
 
@@ -74,6 +81,9 @@ def run_pipeline(
     icp_profile=None,
     min_qualification_score: int = 60,
     seed_contacts: list[Contact] | None = None,
+    use_master_persona: bool = True,
+    master_persona_path: str = "MASTER.md",
+    few_shot_k: int = 3,
 ) -> tuple[int, PipelineRunReport]:
     """
     Run the full pipeline from ingestion to output.
@@ -166,6 +176,10 @@ def run_pipeline(
         "audience_reason",
         "fit_score",
         "fit_reason",
+        "fit_breakdown_json",
+        "matched_signals",
+        "owner_readiness_tier",
+        "owner_readiness_confidence",
         "email_step_1",
         "email_step_2",
         "email_step_3",
@@ -177,6 +191,7 @@ def run_pipeline(
         "qualification_score",
         "qualification_tier",
         "qualification_reason",
+        "qualification_breakdown_json",
         # Provenance fields
         "title_source",
         "company_source",
@@ -202,12 +217,25 @@ def run_pipeline(
             classified = classify(contact)
             fit_scores.append(classified.fit_score)
 
+            if classified.audience == "owner":
+                report.owner_count += 1
+                if (
+                    classified.fit_breakdown.get("owner_readiness", {}).get(
+                        "tier", "low"
+                    )
+                    == "high"
+                ):
+                    report.owner_high_readiness_count += 1
+            elif classified.audience == "referral_advocate":
+                report.referral_advocate_count += 1
+
             qualification = qualify_contact(
                 contact=contact,
                 audience=classified.audience,
                 fit_score=classified.fit_score,
                 icp_profile=icp_profile,
                 min_qualification_score=min_qualification_score,
+                fit_breakdown=classified.fit_breakdown,
             )
 
             if qualification.is_qualified:
@@ -217,7 +245,14 @@ def run_pipeline(
 
             # Generate sequence
             try:
-                sequence = generate_sequence(classified, llm, dry_run=dry_run)
+                sequence = generate_sequence(
+                    classified,
+                    llm,
+                    dry_run=dry_run,
+                    use_master_persona=use_master_persona,
+                    master_persona_path=master_persona_path,
+                    few_shot_k=few_shot_k,
+                )
             except Exception as e:
                 report.generation_failures.append(f"{contact.row_id}: {str(e)}")
                 # Use fallback sequence
@@ -262,6 +297,10 @@ def run_pipeline(
                     "audience_reason": classified.audience_reason,
                     "fit_score": classified.fit_score,
                     "fit_reason": classified.fit_reason,
+                    "fit_breakdown_json": json.dumps(classified.fit_breakdown),
+                    "matched_signals": "; ".join(classified.matched_signals),
+                    "owner_readiness_tier": qualification.owner_readiness_tier,
+                    "owner_readiness_confidence": qualification.owner_readiness_confidence,
                     "email_step_1": sequence.step_1,
                     "email_step_2": sequence.step_2,
                     "email_step_3": sequence.step_3,
@@ -273,6 +312,7 @@ def run_pipeline(
                     "qualification_score": qualification.score,
                     "qualification_tier": qualification.tier,
                     "qualification_reason": "; ".join(qualification.reasons),
+                    "qualification_breakdown_json": json.dumps(qualification.breakdown),
                     **provenance,
                     "voice_profile_version": sequence.voice_profile_version,
                     "generation_method": sequence.generation_method,

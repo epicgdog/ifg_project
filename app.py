@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -45,6 +46,30 @@ def _apply_session_env(overrides: dict[str, str]) -> None:
             os.environ[key] = cleaned
 
 
+def _parse_json_field(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _to_int(value: object, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        if isinstance(value, str) and not value.strip():
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 st.title("ForgeReach Prospecting and Outreach")
 st.caption(
     "Run CSV processing, optional API discovery, qualification, and campaign export from one place"
@@ -74,6 +99,20 @@ with st.sidebar:
     voice_profile_path = st.text_input(
         "Voice profile path",
         value="data/voice_profile.json",
+    )
+    master_persona_path = st.text_input(
+        "MASTER persona path",
+        value="MASTER.md",
+    )
+    use_master_persona = st.checkbox(
+        "Use MASTER-based few-shot",
+        value=True,
+    )
+    few_shot_k = st.slider(
+        "Few-shot examples per step",
+        min_value=1,
+        max_value=5,
+        value=3,
     )
     icp_profile_path = st.text_input(
         "ICP profile path",
@@ -107,6 +146,10 @@ with st.sidebar:
     with st.expander("API keys (session only)"):
         st.caption("Optional: overrides .env for this app session only")
         openrouter_key = st.text_input("OPENROUTER_API_KEY", type="password")
+        openrouter_model = st.text_input(
+            "OPENROUTER_MODEL",
+            value=os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2"),
+        )
         apollo_key = st.text_input("APOLLO_API_KEY", type="password")
         hunter_key = st.text_input("HUNTER_API_KEY", type="password")
         apify_token = st.text_input("APIFY_API_TOKEN", type="password")
@@ -131,6 +174,10 @@ cfg2[0].metric("Mode", mode)
 cfg2[1].metric("RA Mode", "On" if referral_advocates_only else "Off")
 cfg2[2].metric("State", state.upper() if state else "CO")
 cfg2[3].metric("Dry Run", "On" if dry_run else "Off")
+cfg3 = st.columns(3)
+cfg3[0].metric("Model", os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2"))
+cfg3[1].metric("MASTER Few-shot", "On" if use_master_persona else "Off")
+cfg3[2].metric("Few-shot k", str(few_shot_k))
 
 st.subheader("CSV Inputs")
 uploaded_files = st.file_uploader(
@@ -145,12 +192,31 @@ use_sample = st.checkbox(
     value=use_sample_default,
 )
 
+st.subheader("Apollo Credit Estimator")
+est_cols = st.columns(3)
+estimated_discovery_calls = 0
+if mode in {"API discovery only", "CSV + API merge"} and "apollo" in prospect_sources:
+    estimated_discovery_calls = (int(prospect_limit) + 24) // 25
+estimated_enrichment_calls = 0
+if enrich:
+    estimated_enrichment_calls = len(uploaded_files or []) * 25
+est_cols[0].metric("Estimated discovery calls", estimated_discovery_calls)
+est_cols[1].metric("Estimated enrich calls", estimated_enrichment_calls)
+est_cols[2].metric(
+    "Estimated total calls",
+    estimated_discovery_calls + estimated_enrichment_calls,
+)
+st.caption(
+    "Estimate only. Actual Apollo credit usage depends on plan billing rules, cache hits, and endpoint behavior."
+)
+
 run_clicked = st.button("Run Campaign Build", type="primary")
 
 if run_clicked:
     _apply_session_env(
         {
             "OPENROUTER_API_KEY": openrouter_key,
+            "OPENROUTER_MODEL": openrouter_model,
             "APOLLO_API_KEY": apollo_key,
             "HUNTER_API_KEY": hunter_key,
             "APIFY_API_TOKEN": apify_token,
@@ -194,6 +260,9 @@ if run_clicked:
                     ],
                     referral_advocates_only=referral_advocates_only,
                     state=state,
+                    use_master_persona=use_master_persona,
+                    master_persona_path=master_persona_path,
+                    few_shot_k=few_shot_k,
                 )
 
                 df = pd.read_csv(result.output_path)
@@ -223,6 +292,17 @@ if run_clicked:
                 m5, m6 = st.columns(2)
                 m5.metric("Review Flagged", report["review_flagged_count"])
                 m6.metric("Avg Fit Score", report["avg_fit_score"])
+
+                st.subheader("Channel Summary")
+                ch1, ch2, ch3 = st.columns(3)
+                ch1.metric("Owners", report.get("owner_count", 0))
+                ch2.metric(
+                    "Referral Advocates", report.get("referral_advocate_count", 0)
+                )
+                ch3.metric(
+                    "Owner High Readiness",
+                    report.get("owner_high_readiness_count", 0),
+                )
 
                 st.subheader("Audience Split")
                 if not df.empty and "audience" in df.columns:
@@ -255,6 +335,8 @@ if run_clicked:
                         "email",
                         "audience",
                         "fit_score",
+                        "owner_readiness_tier",
+                        "owner_readiness_confidence",
                         "qualified",
                         "qualification_score",
                         "qualification_tier",
@@ -276,6 +358,69 @@ if run_clicked:
                     st.markdown(f"**Step 1**\n\n{selected.get('email_step_1', '')}")
                     st.markdown(f"**Step 2**\n\n{selected.get('email_step_2', '')}")
                     st.markdown(f"**Step 3**\n\n{selected.get('email_step_3', '')}")
+
+                    st.subheader("Score Inspector")
+                    fit_breakdown = _parse_json_field(
+                        selected.get("fit_breakdown_json", "")
+                    )
+                    qual_breakdown = _parse_json_field(
+                        selected.get("qualification_breakdown_json", "")
+                    )
+
+                    s1, s2, s3 = st.columns(3)
+                    s1.metric("Fit Score", _to_int(selected.get("fit_score", 0)))
+                    s2.metric(
+                        "Qualification Score",
+                        _to_int(selected.get("qualification_score", 0)),
+                    )
+                    s3.metric(
+                        "Owner Readiness",
+                        f"{selected.get('owner_readiness_tier', 'n/a')} ({selected.get('owner_readiness_confidence', 0)})",
+                    )
+
+                    matched = selected.get("matched_signals", "")
+                    if matched:
+                        st.caption(f"Matched signals: {matched}")
+
+                    fit_adjustments = fit_breakdown.get("adjustments", [])
+                    if fit_adjustments:
+                        fit_rows = [
+                            {
+                                "rule": str(item.get("rule", "")),
+                                "delta": _to_int(item.get("delta", 0)),
+                                "evidence": ", ".join(
+                                    [str(e) for e in item.get("evidence", [])]
+                                ),
+                            }
+                            for item in fit_adjustments
+                        ]
+                        st.markdown("**Fit adjustments**")
+                        st.dataframe(pd.DataFrame(fit_rows), use_container_width=True)
+
+                        cumulative = fit_breakdown.get("base", 40)
+                        waterfall_points = [{"stage": "base", "score": cumulative}]
+                        for row in fit_rows:
+                            cumulative += row["delta"]
+                            waterfall_points.append(
+                                {
+                                    "stage": row["rule"],
+                                    "score": max(0, min(100, cumulative)),
+                                }
+                            )
+                        waterfall_df = pd.DataFrame(waterfall_points).set_index("stage")
+                        st.bar_chart(waterfall_df)
+
+                    qual_adjustments = qual_breakdown.get("adjustments", [])
+                    if qual_adjustments:
+                        qual_rows = [
+                            {
+                                "rule": str(item.get("rule", "")),
+                                "delta": _to_int(item.get("delta", 0)),
+                            }
+                            for item in qual_adjustments
+                        ]
+                        st.markdown("**Qualification adjustments**")
+                        st.dataframe(pd.DataFrame(qual_rows), use_container_width=True)
 
                 st.subheader("Download")
                 campaign_bytes = df.to_csv(index=False).encode("utf-8")

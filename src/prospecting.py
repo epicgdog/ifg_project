@@ -50,7 +50,7 @@ class ICPProfile:
         ]
     )
     target_states: list[str] = field(
-        default_factory=lambda: ["TX", "TN", "FL", "GA", "NC", "SC"]
+        default_factory=lambda: ["CO", "TX", "TN", "FL", "GA", "NC", "SC"]
     )
     excluded_keywords: list[str] = field(
         default_factory=lambda: [
@@ -102,6 +102,9 @@ class ProspectQualification:
     tier: str
     reasons: list[str]
     is_qualified: bool
+    breakdown: dict[str, object] = field(default_factory=dict)
+    owner_readiness_tier: str = "n/a"
+    owner_readiness_confidence: float = 0.0
 
 
 RA_ROLE_PRESETS: dict[str, list[str]] = {
@@ -406,6 +409,7 @@ def qualify_contact(
     fit_score: int,
     icp_profile: ICPProfile,
     min_qualification_score: int,
+    fit_breakdown: dict[str, object] | None = None,
 ) -> ProspectQualification:
     title = contact.title.lower()
     industry = contact.industry.lower()
@@ -413,42 +417,50 @@ def qualify_contact(
     combined = " ".join([title, industry, notes])
 
     score = fit_score
+    adjustments: list[dict[str, object]] = []
     reasons: list[str] = []
 
     if _contains_any(combined, icp_profile.target_industry_keywords):
         score += 15
         reasons.append("Industry aligns with ICP")
+        adjustments.append({"rule": "icp_industry", "delta": 15})
 
     if audience == "owner" and _contains_any(
         title, icp_profile.target_owner_title_keywords
     ):
         score += 10
         reasons.append("Owner/operator title match")
+        adjustments.append({"rule": "icp_owner_title", "delta": 10})
 
     if audience == "referral_advocate" and _contains_any(
         combined, icp_profile.target_referral_title_keywords
     ):
         score += 10
         reasons.append("Referral partner profile match")
+        adjustments.append({"rule": "icp_referral_title", "delta": 10})
 
     state = contact.state.upper().strip()
     if state and state in {x.upper() for x in icp_profile.target_states}:
         score += 5
         reasons.append("Target geography match")
+        adjustments.append({"rule": "icp_state", "delta": 5})
 
     employees = _parse_int(contact.employee_count)
     if employees >= icp_profile.min_employee_count > 0:
         score += 5
         reasons.append("Headcount within target range")
+        adjustments.append({"rule": "icp_employee_count", "delta": 5})
 
     revenue = _parse_int(contact.annual_revenue)
     if revenue >= icp_profile.min_revenue > 0:
         score += 5
         reasons.append("Revenue within target range")
+        adjustments.append({"rule": "icp_revenue", "delta": 5})
 
     if _contains_any(combined, icp_profile.excluded_keywords):
         score -= 20
         reasons.append("Contains excluded profile signals")
+        adjustments.append({"rule": "icp_exclusion", "delta": -20})
 
     score = max(0, min(100, score))
     if score >= 75:
@@ -458,9 +470,18 @@ def qualify_contact(
     else:
         tier = "low"
 
+    owner_readiness = (fit_breakdown or {}).get("owner_readiness", {})
+
     return ProspectQualification(
         score=score,
         tier=tier,
         reasons=reasons or ["Baseline fit from current profile context"],
         is_qualified=score >= min_qualification_score,
+        breakdown={
+            "base": fit_score,
+            "adjustments": adjustments,
+            "final_score": score,
+        },
+        owner_readiness_tier=str(owner_readiness.get("tier", "n/a")),
+        owner_readiness_confidence=float(owner_readiness.get("confidence", 0.0)),
     )

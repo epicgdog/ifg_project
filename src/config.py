@@ -23,7 +23,7 @@ def load_settings() -> Settings:
     load_dotenv()
     return Settings(
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
-        openrouter_model=os.getenv("OPENROUTER_MODEL", "moonshotai/kimi-k2"),
+        openrouter_model=os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v3.2"),
         openrouter_base_url=os.getenv(
             "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
         ),

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from .master_persona import load_master_persona
 from .models import ClassifiedContact, GeneratedSequence
 from .openrouter_client import OpenRouterClient
 from .validators import JSONValidator, SequenceValidator
@@ -23,7 +24,11 @@ def _audience_instructions(audience: str) -> str:
 
 
 def build_sequence_prompt(
-    item: ClassifiedContact, voice_profile: Any | None = None
+    item: ClassifiedContact,
+    voice_profile: Any | None = None,
+    use_master_persona: bool = True,
+    master_persona_path: str = "MASTER.md",
+    few_shot_k: int = 3,
 ) -> str:
     """
     Build the generation prompt with voice profile and context.
@@ -37,9 +42,47 @@ def build_sequence_prompt(
     c = item.contact
     first_name = c.first_name or (c.full_name.split(" ")[0] if c.full_name else "there")
 
-    # Get style exemplars for this context (static now, RAG later)
-    exemplars = voice_profile.get_exemplars_for_context(item.audience, 1)
-    exemplar_text = "\n".join([f"- {ex}" for ex in exemplars]) if exemplars else ""
+    # Static profile exemplars
+    profile_exemplars = voice_profile.get_exemplars_for_context(item.audience, 1)
+
+    master_section = ""
+    step_examples_text = ""
+    if use_master_persona:
+        master = load_master_persona(master_persona_path)
+        context_text = " ".join(
+            [
+                c.title,
+                c.company,
+                c.industry,
+                c.notes,
+                item.audience_reason,
+                item.fit_reason,
+            ]
+        )
+
+        step_blocks = []
+        for step in (1, 2, 3):
+            examples = master.select_examples(
+                audience=item.audience,
+                step=step,
+                context_text=context_text,
+                k=max(1, few_shot_k),
+            )
+            filled = [
+                ex.replace("{first_name}", first_name).replace("{name}", first_name)
+                for ex in examples
+            ]
+            if filled:
+                step_blocks.append(
+                    f"Step {step} few-shot examples:\n"
+                    + "\n".join([f"- {example}" for example in filled])
+                )
+
+        step_examples_text = "\n\n".join(step_blocks)
+        master_section = master.to_prompt_section()
+
+    exemplar_lines = [f"- {ex}" for ex in profile_exemplars]
+    exemplar_text = "\n".join(exemplar_lines)
 
     # Build data provenance section
     provenance = []
@@ -59,8 +102,14 @@ def build_sequence_prompt(
 Voice Profile:
 {voice_profile.to_prompt_section()}
 
-Style Examples (adapt naturally, do not copy verbatim):
+Style Examples from Voice Profile (adapt naturally, do not copy verbatim):
 {exemplar_text}
+
+MASTER Persona Reference:
+{master_section}
+
+Few-Shot Examples (adapt tone/structure, do not copy verbatim):
+{step_examples_text}
 
 Audience Instructions:
 {_audience_instructions(item.audience)}
@@ -86,6 +135,7 @@ Output Requirements:
 - Each step must have exactly one CTA question
 - Keep it human, specific, and direct
 - Avoid spam lines like "just checking in" or "hope you're well"
+- Avoid copying any example sentence verbatim
 - Sign as: {voice_profile.name}
 
 JSON Output:
@@ -128,7 +178,12 @@ def _generate_dry_run_sequence(item: ClassifiedContact) -> dict[str, str]:
 
 
 def generate_sequence(
-    item: ClassifiedContact, llm: OpenRouterClient, dry_run: bool = False
+    item: ClassifiedContact,
+    llm: OpenRouterClient,
+    dry_run: bool = False,
+    use_master_persona: bool = True,
+    master_persona_path: str = "MASTER.md",
+    few_shot_k: int = 3,
 ) -> GeneratedSequence:
     """
     Generate and validate a 3-step email sequence.
@@ -150,7 +205,13 @@ def generate_sequence(
     # Build prompts with voice profile
     voice_profile = get_voice_profile()
     system_prompt = build_system_prompt(voice_profile)
-    user_prompt = build_sequence_prompt(item, voice_profile)
+    user_prompt = build_sequence_prompt(
+        item,
+        voice_profile,
+        use_master_persona=use_master_persona,
+        master_persona_path=master_persona_path,
+        few_shot_k=few_shot_k,
+    )
 
     # Generate with LLM
     raw = llm.generate(system_prompt, user_prompt, temperature=0.65)

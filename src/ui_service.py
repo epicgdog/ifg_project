@@ -41,6 +41,9 @@ def run_campaign_pipeline(
     hunter_domains: list[str] | None = None,
     referral_advocates_only: bool = False,
     state: str = "CO",
+    use_master_persona: bool = True,
+    master_persona_path: str = "MASTER.md",
+    few_shot_k: int = 3,
 ) -> DashboardRunResult:
     settings = load_settings()
     llm = OpenRouterClient(settings)
@@ -103,6 +106,9 @@ def run_campaign_pipeline(
         icp_profile=icp_profile,
         min_qualification_score=min_qualification_score,
         seed_contacts=seed_contacts,
+        use_master_persona=use_master_persona,
+        master_persona_path=master_persona_path,
+        few_shot_k=max(1, few_shot_k),
     )
 
     return DashboardRunResult(output_path=output_path, report=report)

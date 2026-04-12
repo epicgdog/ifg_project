@@ -7,3 +7,5 @@ out/
 **/__pycache__/
 *.pyc
 data/apollo-contacts-export.csv
+
+GRADE.md

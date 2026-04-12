@@ -138,6 +138,23 @@ Examples:
         type=str,
         help="Path to voice profile JSON file (default: data/voice_profile.json)",
     )
+    voice_group.add_argument(
+        "--master-persona-path",
+        type=str,
+        default="MASTER.md",
+        help="Path to master persona markdown (default: MASTER.md)",
+    )
+    voice_group.add_argument(
+        "--disable-master-persona",
+        action="store_true",
+        help="Disable MASTER persona few-shot prompting",
+    )
+    voice_group.add_argument(
+        "--few-shot-k",
+        type=int,
+        default=3,
+        help="Number of few-shot examples per step (default: 3)",
+    )
 
     qualification_group = parser.add_argument_group("Qualification Options")
     qualification_group.add_argument(
@@ -302,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
             icp_profile=icp_profile,
             min_qualification_score=args.min_qualification_score,
             seed_contacts=seed_contacts,
+            use_master_persona=not args.disable_master_persona,
+            master_persona_path=args.master_persona_path,
+            few_shot_k=max(1, args.few_shot_k),
         )
 
         # Output summary
