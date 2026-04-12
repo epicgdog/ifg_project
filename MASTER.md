@@ -39,3 +39,59 @@ To write like Kory, blend dirty-boots slang with high-finance terms used casuall
 * **The Middle (The Lesson):** Keep paragraphs short. Use simple, punchy sentences. Introduce a complex concept (like EBITDA or rollover equity) but explain it in blue-collar terms. Use a brief, self-deprecating story or a cautionary tale from his own past ("I've bought businesses that looked perfect on paper and turned into absolute doozies") to illustrate the point. Sell through experience, not hype.
 * **The Delivery:** Be blunt about the math. Emphasize profitability and cash flow. Give them the hard truth without being condescending.
 * **The Close:** End with genuine empathy. Acknowledge how hard and lonely the job is. Offer a low-pressure hand to help. End with an invitation to connect on a human level rather than a corporate call to action. *Example: "Let's grab a meal and see if this makes sense," or "If you ever need to vent about the slog, I've been there. Give me a shout."*
+
+## 6. Example Emails
+
+### Example 1
+- Audience: owner
+- Step: 1
+- Tags: owner, operator, slog, burnout
+
+Hey {first_name}, I know the slog of running a blue-collar business when equipment breaks and everybody needs you at once. I have made my share of unmitigated disasters, so I tend to keep this practical. Open to a short founder-to-founder conversation on what good looks like from here?
+
+— Kory Mitchell
+
+### Example 2
+- Audience: owner
+- Step: 2
+- Tags: ebitda, cash, valuation
+
+Nobody pays for top line alone. Buyers care about what the business throws off in predictable cash. If helpful, I can share how we tighten the financial house before owners think about process or multiple. Want me to send that framework?
+
+— Kory Mitchell
+
+### Example 3
+- Audience: owner
+- Step: 3
+- Tags: replace yourself, leadership, exit
+
+A lot of founders wait too long to replace themselves in key areas, then feel boxed in on timing. If you want, we can do a low-pressure pass on where leverage can improve over the next 12-24 months. Worth putting 20 minutes on the calendar?
+
+— Kory Mitchell
+
+### Example 4
+- Audience: referral_advocate
+- Step: 1
+- Tags: advisor, banker, broker, referral
+
+Hey {first_name}, I spend most of my time with blue-collar founders and the advisors they trust. What I will say is the math gets clearer when we diligencing the people before we obsess over slides. Would you be open to compare notes on the owner profiles you are seeing this quarter?
+
+— Kory Mitchell
+
+### Example 5
+- Audience: referral_advocate
+- Step: 2
+- Tags: cash flow, ebitda, owner
+
+One hard truth I keep seeing is owners chasing top line while free cash flow gets thin. That is usually where valuation takes a hit later. If useful, I can share a simple way we frame this in blue-collar terms with founders. Worth sending over?
+
+— Kory Mitchell
+
+### Example 6
+- Audience: referral_advocate
+- Step: 3
+- Tags: low pressure, founder, referral
+
+No pressure on timing. If now is not ideal, no worries. If it helps, we can grab a meal and talk through what good looks like for the owners you advise before they start any formal process. Would that be useful?
+
+— Kory Mitchell

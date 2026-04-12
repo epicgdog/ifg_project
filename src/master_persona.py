@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -120,6 +121,108 @@ def _split_terms(text: str) -> list[str]:
     return [p for p in parts if p]
 
 
+def _parse_examples_section(section: str) -> list[PersonaExample]:
+    """Parse ``## 6. Example Emails`` into ``PersonaExample`` instances.
+
+    Expected format for each example::
+
+        ### Example N
+        - Audience: owner
+        - Step: 1
+        - Tags: owner, operator
+
+        Email body paragraph 1...
+
+        Email body paragraph 2...
+
+    The body runs until the next ``### Example`` heading (or end of section).
+    If ``section`` is empty, or no examples parse cleanly, the function returns
+    an empty list so callers can fall back to defaults.
+    """
+    if not section.strip():
+        return []
+
+    # Split on the "### Example" heading while keeping the split markers' content.
+    # We use a manual scan so we tolerate arbitrary whitespace variations.
+    blocks: list[str] = []
+    current: list[str] = []
+    in_example = False
+    for line in section.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("### Example"):
+            if in_example and current:
+                blocks.append("\n".join(current))
+            current = []
+            in_example = True
+            continue
+        if in_example:
+            current.append(line)
+    if in_example and current:
+        blocks.append("\n".join(current))
+
+    examples: list[PersonaExample] = []
+    for block in blocks:
+        lines = block.splitlines()
+        audience = ""
+        step: int | None = None
+        tags: list[str] = []
+        body_start_idx: int | None = None
+
+        for i, raw in enumerate(lines):
+            line = raw.strip()
+            if not line:
+                # First blank line after the bullet list marks start of body.
+                if audience and step is not None:
+                    body_start_idx = i + 1
+                    break
+                continue
+            if line.startswith("- "):
+                meta = line[2:].strip()
+                key, _, value = meta.partition(":")
+                key_l = key.strip().lower()
+                value = value.strip()
+                if key_l == "audience":
+                    audience = value
+                elif key_l == "step":
+                    digits = re.sub(r"[^0-9]", "", value)
+                    if digits:
+                        step = int(digits)
+                elif key_l == "tags":
+                    tags = [t.strip() for t in value.split(",") if t.strip()]
+            else:
+                # Non-bullet, non-blank line => body already started.
+                body_start_idx = i
+                break
+
+        if audience == "" or step is None or body_start_idx is None:
+            continue
+
+        body_lines = lines[body_start_idx:]
+        # Trim leading/trailing blank lines.
+        while body_lines and not body_lines[0].strip():
+            body_lines.pop(0)
+        while body_lines and not body_lines[-1].strip():
+            body_lines.pop()
+
+        if not body_lines:
+            continue
+
+        text = "\n".join(body_lines).strip()
+        if not text:
+            continue
+
+        examples.append(
+            PersonaExample(
+                audience=audience,
+                step=step,
+                tags=tags,
+                text=text,
+            )
+        )
+
+    return examples
+
+
 def _build_default_examples() -> list[PersonaExample]:
     return [
         PersonaExample(
@@ -204,6 +307,7 @@ def load_master_persona(path: Path | str = "MASTER.md") -> MasterPersona:
     rules_section = _extract_section(
         raw_text, '5. Email Writing Rules for the "Kory" Persona'
     )
+    examples_section = _extract_section(raw_text, "6. Example Emails")
 
     tone_rules = _extract_bullets(tone_section)
     philosophy = _extract_bullets(philosophy_section)
@@ -230,6 +334,9 @@ def load_master_persona(path: Path | str = "MASTER.md") -> MasterPersona:
     if not identity_summary:
         identity_summary = "Blue-collar boardroom founder voice with humble authority."
 
+    parsed_examples = _parse_examples_section(examples_section)
+    examples = parsed_examples if parsed_examples else _build_default_examples()
+
     return MasterPersona(
         source_path=str(master_path),
         identity_summary=identity_summary,
@@ -238,5 +345,5 @@ def load_master_persona(path: Path | str = "MASTER.md") -> MasterPersona:
         philosophy=philosophy,
         email_rules=email_rules,
         signature_phrases=signature_phrases,
-        examples=_build_default_examples(),
+        examples=examples,
     )
