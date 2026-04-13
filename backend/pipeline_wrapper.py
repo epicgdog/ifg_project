@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.config import Settings, load_settings
+from src.agentic_research import AgenticResearchOrchestrator
 from src.enrichment import EnrichmentConfig, EnrichmentOrchestrator
 from src.exporters import export_instantly_campaign
 from src.ingest import read_contacts
@@ -131,6 +132,10 @@ def execute(
     few_shot_k: int = 3,
     min_qualification_score: int = 60,
     min_fit_score_for_enrich: int = 65,
+    research: bool = True,
+    research_depth: str = "standard",
+    require_verified_email: bool = True,
+    require_identity_confirmation: bool = True,
     referral_advocates_only: bool = False,
     state: str = "CO",
     prospect_sources: list[str] | None = None,
@@ -143,6 +148,18 @@ def execute(
     """Execute the pipeline with staged progress events."""
     start_time = time.time()
     report = PipelineRunReport()
+    report.require_verified_email = require_verified_email
+    report.require_identity_confirmation = require_identity_confirmation
+    if require_verified_email and require_identity_confirmation:
+        report.quality_gate_formula = (
+            "verified_email && (linkedin || decision_maker_name)"
+        )
+    elif require_verified_email:
+        report.quality_gate_formula = "verified_email"
+    elif require_identity_confirmation:
+        report.quality_gate_formula = "linkedin || decision_maker_name"
+    else:
+        report.quality_gate_formula = "none (quality gate disabled)"
 
     settings: Settings = load_settings()
     llm = OpenRouterClient(settings)
@@ -224,6 +241,46 @@ def execute(
                 report.skipped_low_fit_count += 1
         contacts = filtered_contacts
 
+    # Stage 1.75: Agentic research (optional)
+    emit("stage", {"stage": "research"})
+    if research and not dry_run and contacts:
+        research_orchestrator = AgenticResearchOrchestrator(settings)
+        total = len(contacts)
+        researched_contacts: list[Contact] = []
+        for idx, contact in enumerate(contacts, start=1):
+            report.research_contacts_processed += 1
+            try:
+                research_result = research_orchestrator.research_contact(
+                    contact, depth=research_depth
+                )
+                researched_contacts.append(research_result.contact)
+                report.research_queries_serper += research_result.serper_queries_used
+                report.research_websites_scraped += research_result.websites_scraped
+                report.research_emails_found += research_result.emails_found
+                if getattr(research_result.contact, "verified_email", False):
+                    report.research_emails_verified += 1
+                if (
+                    getattr(research_result.contact, "decision_maker_name", "") or ""
+                ).strip():
+                    report.research_decision_makers_found += 1
+                if (
+                    getattr(research_result.contact, "company_summary", "") or ""
+                ).strip():
+                    report.research_company_summaries_extracted += 1
+                if research_result.errors:
+                    report.research_failures.extend(research_result.errors)
+            except Exception as e:
+                report.research_failures.append(f"{contact.row_id}: {e}")
+                researched_contacts.append(contact)
+
+            emit("progress", {"current": idx, "total": total, "stage": "research"})
+        contacts = researched_contacts
+    else:
+        emit(
+            "progress",
+            {"current": len(contacts), "total": len(contacts), "stage": "research"},
+        )
+
     # Stage 2: Enrich (optional)
     emit("stage", {"stage": "enrich"})
     enrichment_results: list[EnrichmentResult] = []
@@ -271,21 +328,31 @@ def execute(
             {"current": len(contacts), "total": len(contacts), "stage": "enrich"},
         )
 
-    # New quality gate: verified_email && (linkedin || decision_maker_name)
-    contactable_results: list[EnrichmentResult] = []
-    for result in enrichment_results:
-        contact = result.contact
-        has_verified_email = getattr(contact, 'verified_email', False) and contact.email
-        has_identity = contact.linkedin or getattr(contact, 'decision_maker_name', '')
+    # Quality gate: verified_email && (linkedin || decision_maker_name)
+    if require_verified_email or require_identity_confirmation:
+        contactable_results: list[EnrichmentResult] = []
+        for result in enrichment_results:
+            contact = result.contact
+            has_verified_email = bool(
+                getattr(contact, "verified_email", False)
+                and getattr(contact, "email", "")
+            )
+            has_identity = bool(
+                getattr(contact, "linkedin", "")
+                or getattr(contact, "decision_maker_name", "")
+            )
 
-        if has_verified_email and has_identity:
-            contactable_results.append(result)
-        else:
-            if not has_verified_email:
-                report.skipped_unverified_email_count += 1
-            if not has_identity:
-                report.skipped_no_identity_count += 1
-    enrichment_results = contactable_results
+            email_pass = not require_verified_email or has_verified_email
+            identity_pass = not require_identity_confirmation or has_identity
+
+            if email_pass and identity_pass:
+                contactable_results.append(result)
+            else:
+                if not email_pass:
+                    report.skipped_unverified_email_count += 1
+                if not identity_pass:
+                    report.skipped_no_identity_count += 1
+        enrichment_results = contactable_results
 
     # EBITDA filter (between enrichment and classification)
     if min_ebitda and min_ebitda > 0:
@@ -311,10 +378,14 @@ def execute(
     classified_rows: list[tuple[EnrichmentResult, Any, Any]] = []
     total = len(enrichment_results)
     fit_scores: list[int] = []
+    audience_confidences: list[float] = []
+    maturity_scores: list[int] = []
     for idx, result in enumerate(enrichment_results, start=1):
         contact = result.contact
         classified = classify(contact)
         fit_scores.append(classified.fit_score)
+        audience_confidences.append(classified.audience_confidence)
+        maturity_scores.append(classified.maturity_score)
 
         if classified.audience == "owner":
             report.owner_count += 1
@@ -456,4 +527,12 @@ def execute(
 
     report.processing_time_seconds = time.time() - start_time
     report.avg_fit_score = sum(fit_scores) / len(fit_scores) if fit_scores else 0
+    report.avg_audience_confidence = (
+        sum(audience_confidences) / len(audience_confidences)
+        if audience_confidences
+        else 0
+    )
+    report.avg_company_maturity_score = (
+        sum(maturity_scores) / len(maturity_scores) if maturity_scores else 0
+    )
     return count, report

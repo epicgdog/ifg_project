@@ -21,6 +21,10 @@ export interface RunFormValues {
   files: File[];
   useSample: boolean;
   enrich: boolean;
+  research: boolean;
+  research_depth: "minimal" | "standard" | "deep";
+  require_verified_email: boolean;
+  require_identity_confirmation: boolean;
   use_master_persona: boolean;
   few_shot_k: number;
   min_qualification_score: number;
@@ -38,6 +42,10 @@ const DEFAULTS: RunFormValues = {
   files: [],
   useSample: false,
   enrich: true,
+  research: true,
+  research_depth: "standard",
+  require_verified_email: true,
+  require_identity_confirmation: true,
   use_master_persona: true,
   few_shot_k: 3,
   min_qualification_score: 60,
@@ -56,6 +64,10 @@ export function toRunRequest(v: RunFormValues, fileIds: string[]): RunRequest {
     csv_file_ids: v.useSample ? ["sample"] : fileIds,
     dry_run: false,
     enrich: v.enrich,
+    research: v.research,
+    research_depth: v.research_depth,
+    require_verified_email: v.require_verified_email,
+    require_identity_confirmation: v.require_identity_confirmation,
     use_master_persona: v.use_master_persona,
     master_persona_path: "MASTER.md",
     voice_profile_path: "data/voice_profile.json",
@@ -432,6 +444,40 @@ export function RunForm({
                 disabled={disabled}
               />
             </div>
+
+            <div className="space-y-2 rounded-md border p-3">
+              <Label className="text-sm">Quality gate</Label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="require-verified-email">Require verified email</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Only pass contacts with verified deliverable email
+                    </p>
+                  </div>
+                  <Switch
+                    id="require-verified-email"
+                    checked={v.require_verified_email}
+                    onCheckedChange={(c) => set("require_verified_email", c)}
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <Label htmlFor="require-identity">Require identity confirmation</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Needs LinkedIn or identified decision-maker name
+                    </p>
+                  </div>
+                  <Switch
+                    id="require-identity"
+                    checked={v.require_identity_confirmation}
+                    onCheckedChange={(c) => set("require_identity_confirmation", c)}
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+            </div>
           </AdvancedAccordion>
         </CardContent>
       </Card>
@@ -446,7 +492,7 @@ export function RunForm({
             <div>
               <Label htmlFor="enrich">Enrichment</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Find missing LinkedIn and company data
+                Fill missing contact and company fields
               </p>
             </div>
             <Switch
@@ -471,6 +517,59 @@ export function RunForm({
               disabled={disabled}
             />
           </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="research">Agentic research</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Serper + website + Hunter orchestration before qualification
+              </p>
+            </div>
+            <Switch
+              id="research"
+              checked={v.research}
+              onCheckedChange={(c) => set("research", c)}
+              disabled={disabled}
+            />
+          </div>
+
+          {v.research && (
+            <div className="space-y-2">
+              <Label>Research depth</Label>
+              <RadioGroup
+                value={v.research_depth}
+                onValueChange={(val) =>
+                  set("research_depth", val as RunFormValues["research_depth"])
+                }
+                disabled={disabled}
+                className="grid grid-cols-3 gap-2"
+              >
+                {([
+                  ["minimal", "Minimal"],
+                  ["standard", "Standard"],
+                  ["deep", "Deep"],
+                ] as const).map(([val, label]) => (
+                  <Label
+                    key={val}
+                    htmlFor={`research-depth-${val}`}
+                    className={cn(
+                      "flex cursor-pointer items-center justify-center rounded-md border px-2 py-1.5 text-xs",
+                      v.research_depth === val
+                        ? "border-primary bg-primary/5 text-foreground"
+                        : "border-muted-foreground/30 text-muted-foreground"
+                    )}
+                  >
+                    <RadioGroupItem
+                      value={val}
+                      id={`research-depth-${val}`}
+                      className="sr-only"
+                    />
+                    {label}
+                  </Label>
+                ))}
+              </RadioGroup>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

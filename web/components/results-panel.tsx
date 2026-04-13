@@ -88,10 +88,29 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
     },
   ];
 
+  const gateFormula =
+    typeof r.quality_gate_formula === "string"
+      ? r.quality_gate_formula
+      : "verified_email && (linkedin || decision_maker_name)";
+  const gateEmailRequired =
+    typeof r.require_verified_email === "boolean" ? r.require_verified_email : true;
+  const gateIdentityRequired =
+    typeof r.require_identity_confirmation === "boolean"
+      ? r.require_identity_confirmation
+      : true;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="mb-3 text-lg font-semibold">Executive summary</h2>
+        <div className="mb-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <div className="font-medium text-foreground">Quality gate applied</div>
+          <div className="mt-1 font-mono">{gateFormula}</div>
+          <div className="mt-1">
+            verified email: {gateEmailRequired ? "required" : "optional"} | identity:
+            {gateIdentityRequired ? " required" : " optional"}
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-8">
           {metrics.map((m) => (
             <MetricCard key={m.label} label={m.label} value={m.value} />

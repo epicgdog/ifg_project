@@ -41,6 +41,10 @@ class RunRequest(BaseModel):
     few_shot_k: int = 3
     min_qualification_score: int = 60
     min_fit_score_for_enrich: int = 65
+    research: bool = True
+    research_depth: Literal["minimal", "standard", "deep"] = "standard"
+    require_verified_email: bool = True
+    require_identity_confirmation: bool = True
     referral_advocates_only: bool = True
     state: str = "CO"
     prospect_sources: list[str] = Field(default_factory=lambda: ["hunter"])
@@ -110,6 +114,10 @@ def _run_in_thread(state: RunState, payload: RunRequest) -> None:
             few_shot_k=payload.few_shot_k,
             min_qualification_score=payload.min_qualification_score,
             min_fit_score_for_enrich=payload.min_fit_score_for_enrich,
+            research=payload.research,
+            research_depth=payload.research_depth,
+            require_verified_email=payload.require_verified_email,
+            require_identity_confirmation=payload.require_identity_confirmation,
             referral_advocates_only=payload.referral_advocates_only,
             state=payload.state,
             prospect_sources=payload.prospect_sources,

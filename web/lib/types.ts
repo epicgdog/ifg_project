@@ -19,6 +19,10 @@ export interface RunRequest {
   csv_file_ids: string[];
   dry_run: boolean;
   enrich: boolean;
+  research?: boolean;
+  research_depth?: "minimal" | "standard" | "deep";
+  require_verified_email?: boolean;
+  require_identity_confirmation?: boolean;
   use_master_persona: boolean;
   master_persona_path: string;
   voice_profile_path: string;
@@ -99,6 +103,9 @@ export interface RunReport {
   // Audience & maturity metrics
   avg_audience_confidence?: number;
   avg_company_maturity_score?: number;
+  require_verified_email?: boolean;
+  require_identity_confirmation?: boolean;
+  quality_gate_formula?: string;
   discovery_errors?: string[];
   [key: string]: unknown;
 }

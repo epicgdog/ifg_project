@@ -175,6 +175,32 @@ Examples:
         default=65,
         help="Minimum fit score to proceed to enrichment (default: 65; set 0 to disable filtering)",
     )
+    qualification_group.add_argument(
+        "--research",
+        action="store_true",
+        help="Enable agentic research stage before enrichment",
+    )
+    qualification_group.add_argument(
+        "--research-depth",
+        type=str,
+        default="standard",
+        choices=["minimal", "standard", "deep"],
+        help="Research depth for agentic stage (default: standard)",
+    )
+    qualification_group.add_argument(
+        "--no-require-verified-email",
+        dest="require_verified_email",
+        action="store_false",
+        default=True,
+        help="Disable verified-email requirement in quality gate",
+    )
+    qualification_group.add_argument(
+        "--no-require-identity",
+        dest="require_identity_confirmation",
+        action="store_false",
+        default=True,
+        help="Disable identity requirement (linkedin or decision-maker) in quality gate",
+    )
 
     # Output options
     output_group = parser.add_argument_group("Output Options")
@@ -325,6 +351,10 @@ def main(argv: list[str] | None = None) -> int:
             icp_profile=icp_profile,
             min_qualification_score=args.min_qualification_score,
             min_fit_score_for_enrich=args.min_fit_score_for_enrich,
+            research=args.research,
+            research_depth=args.research_depth,
+            require_verified_email=args.require_verified_email,
+            require_identity_confirmation=args.require_identity_confirmation,
             seed_contacts=seed_contacts,
             use_master_persona=not args.disable_master_persona,
             master_persona_path=args.master_persona_path,

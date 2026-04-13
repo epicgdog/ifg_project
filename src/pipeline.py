@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .agentic_research import AgenticResearchOrchestrator
 from .enrichment import EnrichmentConfig, EnrichmentOrchestrator
 from .ingest import read_contacts
 from .messaging import generate_sequence
@@ -46,7 +47,7 @@ class PipelineRunReport:
     owner_count: int = 0
     referral_advocate_count: int = 0
     owner_high_readiness_count: int = 0
-    
+
     # Agentic research metrics (new)
     research_contacts_processed: int = 0
     research_queries_serper: int = 0
@@ -56,14 +57,15 @@ class PipelineRunReport:
     research_decision_makers_found: int = 0
     research_company_summaries_extracted: int = 0
     research_failures: list[str] = field(default_factory=list)
-    
-    # New quality gate metrics
-    skipped_unverified_email_count: int = 0
-    skipped_no_identity_count: int = 0
-    
+
     # Audience & maturity metrics
     avg_audience_confidence: float = 0.0
     avg_company_maturity_score: float = 0.0
+
+    # Quality gate configuration
+    require_verified_email: bool = True
+    require_identity_confirmation: bool = True
+    quality_gate_formula: str = "verified_email && (linkedin || decision_maker_name)"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -100,13 +102,25 @@ class PipelineRunReport:
             "research_decision_makers_found": self.research_decision_makers_found,
             "research_company_summaries_extracted": self.research_company_summaries_extracted,
             "research_failure_count": len(self.research_failures),
-            # Quality gate metrics
-            "skipped_unverified_email_count": self.skipped_unverified_email_count,
-            "skipped_no_identity_count": self.skipped_no_identity_count,
             # Audience & maturity metrics
             "avg_audience_confidence": round(self.avg_audience_confidence, 2),
             "avg_company_maturity_score": round(self.avg_company_maturity_score, 1),
+            "require_verified_email": self.require_verified_email,
+            "require_identity_confirmation": self.require_identity_confirmation,
+            "quality_gate_formula": self.quality_gate_formula,
         }
+
+
+def _quality_gate_formula(
+    require_verified_email: bool, require_identity_confirmation: bool
+) -> str:
+    if require_verified_email and require_identity_confirmation:
+        return "verified_email && (linkedin || decision_maker_name)"
+    if require_verified_email:
+        return "verified_email"
+    if require_identity_confirmation:
+        return "linkedin || decision_maker_name"
+    return "none (quality gate disabled)"
 
 
 def _get_provenance_fields(contact) -> dict[str, str]:
@@ -202,6 +216,8 @@ def run_pipeline(
     icp_profile=None,
     min_qualification_score: int = 60,
     min_fit_score_for_enrich: int = 65,
+    research: bool = True,
+    research_depth: str = "standard",
     require_verified_email: bool = True,
     require_identity_confirmation: bool = True,  # linkedin OR decision_maker_name
     seed_contacts: list[Contact] | None = None,
@@ -230,6 +246,11 @@ def run_pipeline(
     """
     start_time = time.time()
     report = PipelineRunReport()
+    report.require_verified_email = require_verified_email
+    report.require_identity_confirmation = require_identity_confirmation
+    report.quality_gate_formula = _quality_gate_formula(
+        require_verified_email, require_identity_confirmation
+    )
     if icp_profile is None:
         icp_profile = load_icp_profile("data/icp_profile.json")
 
@@ -249,6 +270,35 @@ def run_pipeline(
             else:
                 report.skipped_low_fit_count += 1
         contacts = filtered_contacts
+
+    # Stage 1.75: Agentic research (optional)
+    if research and not dry_run and contacts:
+        research_orchestrator = AgenticResearchOrchestrator(llm._settings)
+        researched_contacts: list[Contact] = []
+        for contact in contacts:
+            report.research_contacts_processed += 1
+            try:
+                result = research_orchestrator.research_contact(
+                    contact, depth=research_depth
+                )
+                researched_contacts.append(result.contact)
+                report.research_queries_serper += result.serper_queries_used
+                report.research_websites_scraped += result.websites_scraped
+                report.research_emails_found += result.emails_found
+
+                if getattr(result.contact, "verified_email", False):
+                    report.research_emails_verified += 1
+                if (getattr(result.contact, "decision_maker_name", "") or "").strip():
+                    report.research_decision_makers_found += 1
+                if (getattr(result.contact, "company_summary", "") or "").strip():
+                    report.research_company_summaries_extracted += 1
+
+                if result.errors:
+                    report.research_failures.extend(result.errors)
+            except Exception as e:
+                report.research_failures.append(f"{contact.row_id}: {str(e)}")
+                researched_contacts.append(contact)
+        contacts = researched_contacts
 
     # Stage 2: Enrich (optional)
     enrichment_results: list[EnrichmentResult] = []
@@ -297,8 +347,14 @@ def run_pipeline(
         contactable_results: list[EnrichmentResult] = []
         for result in enrichment_results:
             contact = result.contact
-            has_verified_email = contact.verified_email and contact.email
-            has_identity = contact.linkedin or contact.decision_maker_name
+            has_verified_email = bool(
+                getattr(contact, "verified_email", False)
+                and getattr(contact, "email", "")
+            )
+            has_identity = bool(
+                getattr(contact, "linkedin", "")
+                or getattr(contact, "decision_maker_name", "")
+            )
 
             email_pass = not require_verified_email or has_verified_email
             identity_pass = not require_identity_confirmation or has_identity
@@ -499,7 +555,13 @@ def run_pipeline(
 
     report.processing_time_seconds = time.time() - start_time
     report.avg_fit_score = sum(fit_scores) / len(fit_scores) if fit_scores else 0
-    report.avg_audience_confidence = sum(audience_confidences) / len(audience_confidences) if audience_confidences else 0
-    report.avg_company_maturity_score = sum(maturity_scores) / len(maturity_scores) if maturity_scores else 0
+    report.avg_audience_confidence = (
+        sum(audience_confidences) / len(audience_confidences)
+        if audience_confidences
+        else 0
+    )
+    report.avg_company_maturity_score = (
+        sum(maturity_scores) / len(maturity_scores) if maturity_scores else 0
+    )
 
     return count, report

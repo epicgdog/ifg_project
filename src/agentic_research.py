@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -90,7 +91,9 @@ class AgenticResearchOrchestrator:
         self.website = WebsiteResearchProvider(settings)
         self.hunter = HunterProvider(settings)
 
-    def research_contact(self, contact: Contact, depth: str = "standard") -> ResearchResult:
+    def research_contact(
+        self, contact: Contact, depth: str = "standard"
+    ) -> ResearchResult:
         """
         Main entry point for agentic research on a contact.
 
@@ -106,9 +109,9 @@ class AgenticResearchOrchestrator:
         Returns:
             ResearchResult with enriched contact and operation metrics
         """
-        if not contact:
+        if contact is None:
             return ResearchResult(
-                contact=contact or Contact(),
+                contact=Contact.from_dict({}),
                 success=False,
                 errors=["No contact provided"],
             )
@@ -142,7 +145,9 @@ class AgenticResearchOrchestrator:
             person_data: dict[str, Any] = {}
             if depth in ("standard", "deep"):
                 contact.research_status = "person_research"
-                person_data = self._run_person_agent(contact, discovery_data, company_data)
+                person_data = self._run_person_agent(
+                    contact, discovery_data, company_data
+                )
                 if person_data:
                     sources_used.append("person_enrichment")
 
@@ -242,7 +247,11 @@ class AgenticResearchOrchestrator:
 
         # Query 2: Search for company website if still missing
         if not contact.website and not results["website_found"]:
-            location = f"{contact.city} {contact.state}".strip() if (contact.city or contact.state) else ""
+            location = (
+                f"{contact.city} {contact.state}".strip()
+                if (contact.city or contact.state)
+                else ""
+            )
             companies = self.serper.search_companies(
                 industry=contact.industry or "company",
                 location=location or "USA",
@@ -284,7 +293,8 @@ class AgenticResearchOrchestrator:
                     if (
                         contact.first_name
                         and contact.last_name
-                        and dm.get("first_name", "").lower() == contact.first_name.lower()
+                        and dm.get("first_name", "").lower()
+                        == contact.first_name.lower()
                         and dm.get("last_name", "").lower() == contact.last_name.lower()
                     ):
                         contact.linkedin = dm.get("linkedin", "")
@@ -292,7 +302,9 @@ class AgenticResearchOrchestrator:
 
         return results
 
-    def _run_company_agent(self, contact: Contact, discovery_data: dict[str, Any]) -> dict[str, Any]:
+    def _run_company_agent(
+        self, contact: Contact, discovery_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Scrape company website for context and team information.
 
@@ -348,8 +360,10 @@ class AgenticResearchOrchestrator:
             if contact.first_name and contact.last_name and team_members:
                 for member in team_members:
                     if (
-                        member.get("first_name", "").lower() == contact.first_name.lower()
-                        and member.get("last_name", "").lower() == contact.last_name.lower()
+                        member.get("first_name", "").lower()
+                        == contact.first_name.lower()
+                        and member.get("last_name", "").lower()
+                        == contact.last_name.lower()
                     ):
                         if member.get("title") and not contact.title:
                             contact.title = member["title"]
@@ -364,7 +378,10 @@ class AgenticResearchOrchestrator:
             return results
 
     def _run_person_agent(
-        self, contact: Contact, discovery_data: dict[str, Any], company_data: dict[str, Any]
+        self,
+        contact: Contact,
+        discovery_data: dict[str, Any],
+        company_data: dict[str, Any],
     ) -> dict[str, Any]:
         """
         Enrich person data through cross-referencing and validation.
@@ -431,19 +448,27 @@ class AgenticResearchOrchestrator:
                         contact.decision_maker_title = member["title"]
                         personalization_facts["team_title"] = member["title"]
 
-                    contact.decision_maker_name = member.get("full_name", contact.full_name)
+                    contact.decision_maker_name = member.get(
+                        "full_name", contact.full_name
+                    )
                     contact.decision_maker_source = "website_team_page"
                     break
 
         # Build personalization facts from available data
         if company_data.get("company_summary"):
-            personalization_facts["company_context"] = company_data["company_summary"][:200]
+            personalization_facts["company_context"] = company_data["company_summary"][
+                :200
+            ]
 
         if discovery_data.get("company_info", {}).get("founded"):
-            personalization_facts["company_founded"] = discovery_data["company_info"]["founded"]
+            personalization_facts["company_founded"] = discovery_data["company_info"][
+                "founded"
+            ]
 
         if discovery_data.get("company_info", {}).get("employees"):
-            personalization_facts["company_size"] = discovery_data["company_info"]["employees"]
+            personalization_facts["company_size"] = discovery_data["company_info"][
+                "employees"
+            ]
 
         # Store personalization facts as JSON
         if personalization_facts:
@@ -498,7 +523,12 @@ class AgenticResearchOrchestrator:
                 if domain.startswith("www."):
                     domain = domain[4:]
             except Exception:
-                domain = contact.website.lower().replace("www.", "").replace("https://", "").replace("http://", "")
+                domain = (
+                    contact.website.lower()
+                    .replace("www.", "")
+                    .replace("https://", "")
+                    .replace("http://", "")
+                )
 
         results["domain_searched"] = domain
 
@@ -512,8 +542,10 @@ class AgenticResearchOrchestrator:
                         if (
                             contact.first_name
                             and contact.last_name
-                            and email_data.get("first_name", "").lower() == contact.first_name.lower()
-                            and email_data.get("last_name", "").lower() == contact.last_name.lower()
+                            and email_data.get("first_name", "").lower()
+                            == contact.first_name.lower()
+                            and email_data.get("last_name", "").lower()
+                            == contact.last_name.lower()
                         ):
                             contact.email = email_data["email"]
                             contact.verified_email = True
@@ -559,7 +591,9 @@ class AgenticResearchOrchestrator:
 
         return results
 
-    def _run_classifier_agent(self, contact: Contact, all_data: dict[str, Any]) -> dict[str, Any]:
+    def _run_classifier_agent(
+        self, contact: Contact, all_data: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Perform audience classification and company maturity scoring.
 
@@ -620,7 +654,9 @@ class AgenticResearchOrchestrator:
             # Mixed signals - moderate confidence
             results["audience"] = "owner"  # Default to owner on conflict
             results["audience_confidence"] = 0.6
-            results["classification_signals"] = [f"owner:{s}" for s in owner_signals] + [f"ra:{s}" for s in ra_signals]
+            results["classification_signals"] = [
+                f"owner:{s}" for s in owner_signals
+            ] + [f"ra:{s}" for s in ra_signals]
         else:
             # No clear signals - low confidence, default to owner
             results["audience"] = "owner"
@@ -660,7 +696,7 @@ class AgenticResearchOrchestrator:
             year_match = re.search(r"(\d{4})", founded)
             if year_match:
                 founded_year = int(year_match.group(1))
-                current_year = 2024  # Using fixed year for consistency
+                current_year = datetime.now(timezone.utc).year
                 years_in_business = current_year - founded_year
 
                 if years_in_business >= 10:
