@@ -1,5 +1,15 @@
+"use client";
 import Link from "next/link";
+import { Settings } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
+import { ConfigHealthDialog } from "./config-health";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export function SiteHeader() {
   return (
@@ -13,15 +23,33 @@ export function SiteHeader() {
             </span>
           </Link>
           <nav className="flex items-center gap-4 text-sm">
-            <Link href="/" className="text-muted-foreground hover:text-foreground">
-              Dashboard
+            <Link href="/demo" className="text-muted-foreground hover:text-foreground">
+              Demo
             </Link>
             <Link href="/samples" className="text-muted-foreground hover:text-foreground">
               Samples
             </Link>
           </nav>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <Dialog>
+            <DialogTrigger asChild>
+              <button
+                className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="API settings"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>API Configuration</DialogTitle>
+              </DialogHeader>
+              <ConfigHealthDialog />
+            </DialogContent>
+          </Dialog>
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

@@ -1,7 +1,7 @@
 "use client";
 import * as React from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, X, FileText } from "lucide-react";
+import { Upload, X, FileText, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,25 @@ export function toRunRequest(v: RunFormValues, fileIds: string[]): RunRequest {
   };
 }
 
+function AdvancedAccordion({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div className="border-t pt-3 mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Advanced settings
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && <div className="mt-3 space-y-4">{children}</div>}
+    </div>
+  );
+}
+
 export function RunForm({
   value,
   onChange,
@@ -86,8 +105,6 @@ export function RunForm({
 
   const onDrop = React.useCallback(
     (accepted: File[]) => {
-      // Merge both changes in one onChange call — two separate set() calls
-      // would close over the same stale `v` and the second would overwrite the first.
       onChange({ ...v, files: [...v.files, ...accepted], useSample: false });
     },
     [v, onChange]
@@ -114,10 +131,10 @@ export function RunForm({
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      {/* Left: mode + upload */}
+      {/* Column 1: Data Source */}
       <Card>
         <CardHeader>
-          <CardTitle>Mode & Source</CardTitle>
+          <CardTitle>Data Source</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <RadioGroup
@@ -128,9 +145,9 @@ export function RunForm({
           >
             {(
               [
-                ["csv_only", "CSV only"],
-                ["api_discovery", "API discovery"],
-                ["csv_plus_api", "CSV + API merge"],
+                ["csv_only", "Use uploaded list"],
+                ["api_discovery", "Find new contacts"],
+                ["csv_plus_api", "Enrich uploaded list"],
               ] as [RunMode, string][]
             ).map(([val, label]) => (
               <div key={val} className="flex items-center gap-2">
@@ -142,18 +159,36 @@ export function RunForm({
             ))}
           </RadioGroup>
 
-          <div
-            {...getRootProps()}
-            className={cn(
-              "rounded-md border border-dashed p-5 text-center text-sm cursor-pointer transition-colors",
-              isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/30",
-              disabled && "opacity-50 pointer-events-none"
-            )}
-          >
-            <input {...getInputProps()} />
-            <Upload className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
-            <div className="font-medium">Drop CSVs here or click to browse</div>
-            <div className="text-xs text-muted-foreground">Accepts .csv files</div>
+          {/* Drop zone + "use sample" anchored together */}
+          <div className="space-y-2">
+            <div
+              {...getRootProps()}
+              className={cn(
+                "rounded-md border border-dashed p-5 text-center text-sm cursor-pointer transition-colors",
+                isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/30",
+                disabled && "opacity-50 pointer-events-none"
+              )}
+            >
+              <input {...getInputProps()} />
+              <Upload className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
+              <div className="font-medium">Drop CSVs here or click to browse</div>
+              <div className="text-xs text-muted-foreground">Accepts .csv files</div>
+            </div>
+
+            <div className="flex items-center gap-2 pl-1">
+              <Checkbox
+                id="use-sample"
+                checked={v.useSample}
+                onCheckedChange={(val) => {
+                  const checked = val === true;
+                  onChange({ ...v, useSample: checked, files: checked ? [] : v.files });
+                }}
+                disabled={disabled}
+              />
+              <Label htmlFor="use-sample" className="cursor-pointer text-sm text-muted-foreground">
+                Use built-in sample file instead
+              </Label>
+            </div>
           </div>
 
           {v.files.length > 0 && (
@@ -182,97 +217,13 @@ export function RunForm({
               ))}
             </div>
           )}
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="use-sample"
-              checked={v.useSample}
-              onCheckedChange={(val) => {
-                const checked = val === true;
-                set("useSample", checked);
-                if (checked) set("files", []);
-              }}
-              disabled={disabled}
-            />
-            <Label htmlFor="use-sample" className="cursor-pointer text-sm">
-              Use sample file
-            </Label>
-          </div>
         </CardContent>
       </Card>
 
-      {/* Middle: generation settings */}
+      {/* Column 2: Target ICP */}
       <Card>
         <CardHeader>
-          <CardTitle>Generation</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="dry-run">Dry run</Label>
-            <Switch
-              id="dry-run"
-              checked={v.dry_run}
-              onCheckedChange={(c) => set("dry_run", c)}
-              disabled={disabled}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="master-persona">Use MASTER persona</Label>
-            <Switch
-              id="master-persona"
-              checked={v.use_master_persona}
-              onCheckedChange={(c) => set("use_master_persona", c)}
-              disabled={disabled}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="enrich">Enrichment</Label>
-            <Switch
-              id="enrich"
-              checked={v.enrich}
-              onCheckedChange={(c) => set("enrich", c)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Few-shot k</Label>
-              <Badge variant="outline">{v.few_shot_k}</Badge>
-            </div>
-            <Slider
-              min={1}
-              max={5}
-              step={1}
-              value={[v.few_shot_k]}
-              onValueChange={(vals) => set("few_shot_k", vals[0] ?? v.few_shot_k)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Min qualification score</Label>
-              <Badge variant="outline">{v.min_qualification_score}</Badge>
-            </div>
-            <Slider
-              min={40}
-              max={90}
-              step={1}
-              value={[v.min_qualification_score]}
-              onValueChange={(vals) =>
-                set("min_qualification_score", vals[0] ?? v.min_qualification_score)
-              }
-              disabled={disabled}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Right: sourcing & ICP */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sourcing & ICP</CardTitle>
+          <CardTitle>Target ICP</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center justify-between">
@@ -296,52 +247,10 @@ export function RunForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Prospect sources</Label>
-            <div className="flex flex-col gap-2">
-              {(["apollo", "hunter"] as ProspectSource[]).map((src) => (
-                <div key={src} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`src-${src}`}
-                    checked={v.prospect_sources.includes(src)}
-                    onCheckedChange={(c) => toggleSource(src, c === true)}
-                    disabled={disabled}
-                  />
-                  <Label htmlFor={`src-${src}`} className="cursor-pointer capitalize">
-                    {src}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="space-y-1.5">
-            <Label htmlFor="prospect-limit">Prospect limit</Label>
-            <Input
-              id="prospect-limit"
-              type="number"
-              min={1}
-              value={v.prospect_limit}
-              onChange={(e) => set("prospect_limit", Number(e.target.value) || 0)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="hunter-domains">Hunter domains</Label>
-            <Input
-              id="hunter-domains"
-              placeholder="acme.com, example.com"
-              value={v.hunter_domains}
-              onChange={(e) => set("hunter_domains", e.target.value)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="min-ebitda">EBITDA minimum</Label>
+            <Label htmlFor="min-ebitda">Min. EBITDA</Label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
                 $
               </span>
               <Input
@@ -356,8 +265,137 @@ export function RunForm({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Approx. filter; uses annual_revenue × 0.15 as proxy
+              Estimated from annual revenue × 0.15
             </p>
+          </div>
+
+          <AdvancedAccordion>
+            <div className="space-y-2">
+              <Label>Contact sources</Label>
+              <div className="flex flex-col gap-2">
+                {(["apollo", "hunter"] as ProspectSource[]).map((src) => (
+                  <div key={src} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`src-${src}`}
+                      checked={v.prospect_sources.includes(src)}
+                      onCheckedChange={(c) => toggleSource(src, c === true)}
+                      disabled={disabled}
+                    />
+                    <Label htmlFor={`src-${src}`} className="cursor-pointer capitalize">
+                      {src}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="prospect-limit">Max contacts to find</Label>
+              <Input
+                id="prospect-limit"
+                type="number"
+                min={1}
+                value={v.prospect_limit}
+                onChange={(e) => set("prospect_limit", Number(e.target.value) || 0)}
+                disabled={disabled}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="hunter-domains">Hunter domains</Label>
+              <Input
+                id="hunter-domains"
+                placeholder="acme.com, example.com"
+                value={v.hunter_domains}
+                onChange={(e) => set("hunter_domains", e.target.value)}
+                disabled={disabled}
+              />
+            </div>
+          </AdvancedAccordion>
+        </CardContent>
+      </Card>
+
+      {/* Column 3: AI Generation */}
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Generation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="dry-run">Dry run</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Skip LLM, use placeholder text</p>
+            </div>
+            <Switch
+              id="dry-run"
+              checked={v.dry_run}
+              onCheckedChange={(c) => set("dry_run", c)}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="enrich">Enrichment</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Pull LinkedIn & company data</p>
+            </div>
+            <Switch
+              id="enrich"
+              checked={v.enrich}
+              onCheckedChange={(c) => set("enrich", c)}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="master-persona">Brand voice</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Apply MASTER persona guidelines</p>
+            </div>
+            <Switch
+              id="master-persona"
+              checked={v.use_master_persona}
+              onCheckedChange={(c) => set("use_master_persona", c)}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Example density</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Reference emails for tone matching</p>
+              </div>
+              <Badge variant="outline">{v.few_shot_k}</Badge>
+            </div>
+            <Slider
+              min={1}
+              max={5}
+              step={1}
+              value={[v.few_shot_k]}
+              onValueChange={(vals) => set("few_shot_k", vals[0] ?? v.few_shot_k)}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Qualification threshold</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Drop contacts scoring below</p>
+              </div>
+              <Badge variant="outline">{v.min_qualification_score}</Badge>
+            </div>
+            <Slider
+              min={40}
+              max={90}
+              step={1}
+              value={[v.min_qualification_score]}
+              onValueChange={(vals) =>
+                set("min_qualification_score", vals[0] ?? v.min_qualification_score)
+              }
+              disabled={disabled}
+            />
           </div>
         </CardContent>
       </Card>
