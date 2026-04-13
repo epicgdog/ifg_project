@@ -35,6 +35,11 @@ class PipelineRunReport:
     skipped_unverified_email_count: int = 0
     skipped_no_identity_count: int = 0
     enriched_count: int = 0
+    enrichment_attempts: int = 0
+    apify_attempts: int = 0
+    apify_successes: int = 0
+    apify_failures: int = 0
+    apollo_enrich_successes: int = 0
     discovery_errors: list[str] = field(default_factory=list)
     enrichment_errors: list[str] = field(default_factory=list)
     generation_failures: list[str] = field(default_factory=list)
@@ -82,6 +87,11 @@ class PipelineRunReport:
             "skipped_no_identity_count": self.skipped_no_identity_count,
             "discovery_error_count": len(self.discovery_errors),
             "enriched_count": self.enriched_count,
+            "enrichment_attempts": self.enrichment_attempts,
+            "apify_attempts": self.apify_attempts,
+            "apify_successes": self.apify_successes,
+            "apify_failures": self.apify_failures,
+            "apollo_enrich_successes": self.apollo_enrich_successes,
             "enrichment_error_count": len(self.enrichment_errors),
             "generation_failure_count": len(self.generation_failures),
             "review_flagged_count": self.review_flagged_count,
@@ -260,10 +270,16 @@ def run_pipeline(
     )
     report.total_contacts = len(contacts)
 
-    # Stage 1.5: Pre-enrichment filter - skip low-fit contacts to save API credits
+    # Stage 1.5: Pre-enrichment filter - skip low-fit contacts to save API credits.
+    # Contacts with a LinkedIn URL are kept regardless because Apify enrichment
+    # is the whole point of having the URL — their current fit score is
+    # untrustworthy until we hydrate their title/company data.
     if min_fit_score_for_enrich > 0:
         filtered_contacts = []
         for contact in contacts:
+            if (contact.linkedin or "").strip() and enrich:
+                filtered_contacts.append(contact)
+                continue
             classified = classify(contact)
             if classified.fit_score >= min_fit_score_for_enrich:
                 filtered_contacts.append(contact)
@@ -290,9 +306,7 @@ def run_pipeline(
             iterator = (_research_one(i, c) for i, c in enumerate(contacts))
         else:
             pool = ThreadPoolExecutor(max_workers=effective_research_workers)
-            futures = [
-                pool.submit(_research_one, i, c) for i, c in enumerate(contacts)
-            ]
+            futures = [pool.submit(_research_one, i, c) for i, c in enumerate(contacts)]
             iterator = (f.result() for f in futures)
 
         for idx, result, error in iterator:
@@ -330,10 +344,29 @@ def run_pipeline(
 
         orchestrator = EnrichmentOrchestrator(llm._settings, enrichment_config)
 
+        apify_enabled = enrichment_config.enable_apify and orchestrator.apify.enabled
+        apollo_enabled = enrichment_config.enable_apollo and orchestrator.apollo.enabled
         for contact in contacts:
             try:
+                report.enrichment_attempts += 1
                 result = orchestrator.enrich(contact)
                 enrichment_results.append(result)
+
+                # Track whether Apify was actually attempted for this contact.
+                # Apify fires when enabled AND the contact has a LinkedIn URL
+                # (from CSV or from Apollo). We can't observe Apollo's linkedin
+                # side-effect from here, so we approximate with contact.linkedin;
+                # this is a floor, not a ceiling.
+                had_linkedin_preenrich = bool((contact.linkedin or "").strip())
+                if apify_enabled and had_linkedin_preenrich and not result.cached:
+                    report.apify_attempts += 1
+                    if "apify" in result.sources_applied:
+                        report.apify_successes += 1
+                    elif any(e.startswith("apify:") for e in result.errors):
+                        report.apify_failures += 1
+
+                if apollo_enabled and "apollo" in result.sources_applied:
+                    report.apollo_enrich_successes += 1
 
                 if result.fields_updated:
                     report.enriched_count += 1
@@ -408,11 +441,19 @@ def run_pipeline(
         "linkedin",
         "city",
         "state",
+        "decision_maker_name",
+        "decision_maker_title",
+        "decision_maker_source",
+        "company_summary",
+        "research_status",
         "audience",
+        "audience_confidence",
         "audience_reason",
         "fit_score",
+        "company_maturity_score",
         "fit_reason",
         "fit_breakdown_json",
+        "personalization_facts_json",
         "matched_signals",
         "owner_readiness_tier",
         "owner_readiness_confidence",
@@ -543,11 +584,19 @@ def run_pipeline(
                     "linkedin": contact.linkedin,
                     "city": contact.city,
                     "state": contact.state,
+                    "decision_maker_name": contact.decision_maker_name,
+                    "decision_maker_title": contact.decision_maker_title,
+                    "decision_maker_source": contact.decision_maker_source,
+                    "company_summary": contact.company_summary,
+                    "research_status": contact.research_status,
                     "audience": classified.audience,
+                    "audience_confidence": classified.audience_confidence,
                     "audience_reason": classified.audience_reason,
                     "fit_score": classified.fit_score,
+                    "company_maturity_score": classified.maturity_score,
                     "fit_reason": classified.fit_reason,
                     "fit_breakdown_json": json.dumps(classified.fit_breakdown),
+                    "personalization_facts_json": contact.personalization_facts_json,
                     "matched_signals": "; ".join(classified.matched_signals),
                     "owner_readiness_tier": qualification.owner_readiness_tier,
                     "owner_readiness_confidence": qualification.owner_readiness_confidence,

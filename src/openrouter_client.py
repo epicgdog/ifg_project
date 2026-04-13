@@ -26,13 +26,17 @@ class OpenRouterClient:
         self._settings = settings
 
     def generate(
-        self, system_prompt: str, user_prompt: str, temperature: float = 0.7
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.7,
+        model: str | None = None,
     ) -> str:
         if not self._settings.openrouter_api_key:
             raise RuntimeError("OPENROUTER_API_KEY is not set")
 
         payload: dict[str, Any] = {
-            "model": self._settings.openrouter_model,
+            "model": model or self._settings.openrouter_model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -123,8 +127,7 @@ class OpenRouterClient:
             ):
                 delay = _RETRY_DELAYS[attempt]
                 logger.warning(
-                    "OpenRouter returned HTTP %d; retrying in %.1fs "
-                    "(attempt %d/%d)",
+                    "OpenRouter returned HTTP %d; retrying in %.1fs (attempt %d/%d)",
                     response.status_code,
                     delay,
                     attempt + 1,

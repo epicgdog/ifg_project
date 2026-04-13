@@ -135,10 +135,18 @@ export interface ContactRow {
   company: string;
   audience: string;
   fit_score: string | number;
+  audience_confidence?: string | number;
+  company_maturity_score?: string | number;
   qualification_tier: string;
   review_flag: string;
   title?: string;
   email?: string;
+  decision_maker_name?: string;
+  decision_maker_title?: string;
+  decision_maker_source?: string;
+  company_summary?: string;
+  research_status?: string;
+  personalization_facts_json?: string;
   subject_1?: string;
   email_step_1?: string;
   subject_2?: string;

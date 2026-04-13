@@ -110,6 +110,17 @@ function firstTwoSentences(text: string | undefined, maxChars = 220): string {
   return parts.length > maxChars ? parts.slice(0, maxChars - 1) + "…" : parts;
 }
 
+function parseEvidenceCount(raw: string | undefined): number {
+  if (!raw) return 0;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const pages = parsed.source_evidence_pages;
+    return Array.isArray(pages) ? pages.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function ContactTable({
   rows,
   onSelect,
@@ -194,13 +205,14 @@ export function ContactTable({
               <TableHead className="w-[14%]">Audience</TableHead>
               <TableHead className="w-[12%]">Fit</TableHead>
               <TableHead className="w-[40%]">AI outreach preview</TableHead>
-              <TableHead className="w-[12%]">Status</TableHead>
+              <TableHead className="w-[8%]">Evidence</TableHead>
+              <TableHead className="w-[10%]">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   No contacts match current filters
                 </TableCell>
               </TableRow>
@@ -209,6 +221,7 @@ export function ContactTable({
                 const preview = firstTwoSentences(
                   r.email_step_1 || r.subject_1 ? String(r.email_step_1 || "") : ""
                 );
+                const evidence = parseEvidenceCount(r.personalization_facts_json as string);
                 return (
                   <TableRow
                     key={`${r.full_name}-${i}`}
@@ -262,6 +275,19 @@ export function ContactTable({
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                       </div>
+                    </TableCell>
+                    <TableCell className="py-4">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
+                          evidence > 0
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                            : "bg-muted text-muted-foreground"
+                        )}
+                        title="Number of grounded source pages used for personalization"
+                      >
+                        {evidence > 0 ? `${evidence} src` : "none"}
+                      </span>
                     </TableCell>
                     <TableCell className="py-4">
                       <StatusPill row={r} />

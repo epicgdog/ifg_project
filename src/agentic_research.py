@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
@@ -8,7 +9,11 @@ from typing import Any
 
 from .config import Settings
 from .models import Contact
+from .openrouter_client import OpenRouterClient
 from .providers import HunterProvider, SerperProvider, WebsiteResearchProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 # Classification signals from scoring module
@@ -46,6 +51,18 @@ FREE_EMAIL_DOMAINS = {
     "mail.com",
     "yandex.com",
     "qq.com",
+}
+
+MAX_QUERIES_BY_DEPTH = {
+    "minimal": 3,
+    "standard": 6,
+    "deep": 9,
+}
+
+MAX_PAGE_EVIDENCE_BY_DEPTH = {
+    "minimal": 0,
+    "standard": 2,
+    "deep": 4,
 }
 
 
@@ -90,6 +107,10 @@ class AgenticResearchOrchestrator:
         self.serper = SerperProvider(settings)
         self.website = WebsiteResearchProvider(settings)
         self.hunter = HunterProvider(settings)
+        self.llm = OpenRouterClient(settings)
+        self.research_model = (
+            settings.openrouter_research_model or settings.openrouter_model
+        )
 
     def research_contact(
         self, contact: Contact, depth: str = "standard"
@@ -127,7 +148,7 @@ class AgenticResearchOrchestrator:
         try:
             # Agent 1: Discovery
             contact.research_status = "discovery"
-            discovery_data = self._run_discovery_agent(contact)
+            discovery_data = self._run_discovery_agent(contact, depth=depth)
             if discovery_data:
                 sources_used.append("discovery")
                 serper_queries += discovery_data.get("queries_used", 0)
@@ -146,7 +167,10 @@ class AgenticResearchOrchestrator:
             if depth in ("standard", "deep"):
                 contact.research_status = "person_research"
                 person_data = self._run_person_agent(
-                    contact, discovery_data, company_data
+                    contact,
+                    discovery_data,
+                    company_data,
+                    depth=depth,
                 )
                 if person_data:
                     sources_used.append("person_enrichment")
@@ -199,7 +223,9 @@ class AgenticResearchOrchestrator:
                 emails_found=emails_found,
             )
 
-    def _run_discovery_agent(self, contact: Contact) -> dict[str, Any]:
+    def _run_discovery_agent(
+        self, contact: Contact, depth: str = "standard"
+    ) -> dict[str, Any]:
         """
         Use Serper to find company and decision maker information.
 
@@ -219,6 +245,9 @@ class AgenticResearchOrchestrator:
             "decision_makers": [],
             "website_found": "",
             "queries_used": 0,
+            "person_search_queries": [],
+            "person_search_hits": [],
+            "evidence_pages": [],
         }
 
         if not self.serper.enabled:
@@ -299,6 +328,75 @@ class AgenticResearchOrchestrator:
                     ):
                         contact.linkedin = dm.get("linkedin", "")
                         break
+
+        # Query 4+: Multi-query person research sweep (LLM planned)
+        planned_queries = self._plan_person_search_queries(contact, depth=depth)
+        if planned_queries:
+            results["person_search_queries"] = planned_queries
+
+        sweep_hits: list[dict[str, str]] = []
+        seen_links: set[str] = set()
+        for query in planned_queries:
+            search_result = self.serper.search(query=query, num=8)
+            results["queries_used"] += 1
+            if not search_result:
+                continue
+
+            for item in search_result.get("organic", []):
+                title = str(item.get("title") or "").strip()
+                link = str(item.get("link") or "").strip()
+                snippet = str(item.get("snippet") or "").strip()
+                if not link or link in seen_links:
+                    continue
+                seen_links.add(link)
+                sweep_hits.append(
+                    {
+                        "query": query,
+                        "title": title,
+                        "link": link,
+                        "snippet": snippet,
+                    }
+                )
+
+        results["person_search_hits"] = sweep_hits
+
+        # Optional deepening: fetch top non-LinkedIn pages and extract stronger evidence.
+        evidence_limit = MAX_PAGE_EVIDENCE_BY_DEPTH.get(depth, 2)
+        if evidence_limit > 0 and sweep_hits:
+            evidence_pages = self._collect_evidence_pages(
+                sweep_hits, limit=evidence_limit
+            )
+            results["evidence_pages"] = evidence_pages
+
+            # Upgrade company summary from evidence when missing.
+            if evidence_pages and not (contact.company_summary or "").strip():
+                snippets = []
+                for page in evidence_pages[:2]:
+                    snippet = str(page.get("summary", "") or "").strip()
+                    if snippet:
+                        snippets.append(snippet)
+                if snippets:
+                    contact.company_summary = " ".join(snippets)[:500]
+
+        # Fill identity clues from search sweep
+        linkedin_hits = [
+            h for h in sweep_hits if "linkedin.com/in/" in h.get("link", "").lower()
+        ]
+        if linkedin_hits and not contact.linkedin:
+            contact.linkedin = linkedin_hits[0]["link"]
+
+        if linkedin_hits and not contact.decision_maker_name:
+            first_title = linkedin_hits[0].get("title", "")
+            guessed_name = first_title.split("-")[0].strip()
+            if guessed_name and len(guessed_name) <= 120:
+                contact.decision_maker_name = guessed_name
+                contact.decision_maker_source = "serper_reasoned_search"
+
+        if linkedin_hits and not contact.decision_maker_title:
+            first_title = linkedin_hits[0].get("title", "")
+            parts = [p.strip() for p in first_title.split("-") if p.strip()]
+            if len(parts) >= 2:
+                contact.decision_maker_title = parts[1][:120]
 
         return results
 
@@ -382,6 +480,7 @@ class AgenticResearchOrchestrator:
         contact: Contact,
         discovery_data: dict[str, Any],
         company_data: dict[str, Any],
+        depth: str = "standard",
     ) -> dict[str, Any]:
         """
         Enrich person data through cross-referencing and validation.
@@ -407,6 +506,9 @@ class AgenticResearchOrchestrator:
         }
 
         personalization_facts: dict[str, Any] = {}
+
+        person_search_hits = discovery_data.get("person_search_hits", [])
+        evidence_pages = discovery_data.get("evidence_pages", [])
 
         # Cross-reference decision makers from discovery
         decision_makers = discovery_data.get("decision_makers", [])
@@ -469,6 +571,99 @@ class AgenticResearchOrchestrator:
             personalization_facts["company_size"] = discovery_data["company_info"][
                 "employees"
             ]
+
+        # Build richer personalization facts from multi-query search sweep
+        if person_search_hits:
+            top_hits = person_search_hits[:12]
+            personalization_facts["search_signals"] = [
+                {
+                    "title": h.get("title", "")[:180],
+                    "snippet": h.get("snippet", "")[:220],
+                    "url": h.get("link", ""),
+                }
+                for h in top_hits
+            ]
+
+            heuristic_hooks: list[str] = []
+            for h in top_hits:
+                title = (h.get("title", "") or "").strip()
+                snippet = (h.get("snippet", "") or "").strip()
+                text = f"{title} {snippet}".lower()
+                if any(
+                    kw in text
+                    for kw in (
+                        "podcast",
+                        "interview",
+                        "speaking",
+                        "webinar",
+                        "award",
+                        "acquired",
+                        "expansion",
+                        "hiring",
+                        "launched",
+                    )
+                ):
+                    hook = title or snippet
+                    if hook and hook not in heuristic_hooks:
+                        heuristic_hooks.append(hook[:180])
+                if len(heuristic_hooks) >= 5:
+                    break
+
+            if heuristic_hooks:
+                personalization_facts["heuristic_personalization_hooks"] = (
+                    heuristic_hooks
+                )
+
+            llm_facts = self._extract_personalization_facts_with_llm(
+                contact,
+                person_search_hits,
+                company_data,
+                depth=depth,
+            )
+            if llm_facts:
+                personalization_facts["reasoned_personalization"] = llm_facts
+                suggested_name = str(llm_facts.get("decision_maker_name") or "").strip()
+                suggested_title = str(
+                    llm_facts.get("decision_maker_title") or ""
+                ).strip()
+                if suggested_name and not contact.decision_maker_name:
+                    contact.decision_maker_name = suggested_name[:120]
+                    contact.decision_maker_source = "reasoning_model"
+                if suggested_title and not contact.decision_maker_title:
+                    contact.decision_maker_title = suggested_title[:120]
+
+        # Include fetched-page evidence in personalization artifacts
+        if evidence_pages:
+            personalization_facts["source_evidence_pages"] = [
+                {
+                    "url": str(p.get("url", "")),
+                    "title": str(p.get("title", ""))[:180],
+                    "summary": str(p.get("summary", ""))[:260],
+                }
+                for p in evidence_pages
+            ]
+
+            page_level_facts = self._extract_page_level_personalization_facts(
+                contact=contact,
+                evidence_pages=evidence_pages,
+                depth=depth,
+            )
+            if page_level_facts:
+                personalization_facts["page_level_personalization"] = page_level_facts
+
+                if not (contact.decision_maker_name or "").strip():
+                    name = str(
+                        page_level_facts.get("decision_maker_name") or ""
+                    ).strip()
+                    if name:
+                        contact.decision_maker_name = name[:120]
+                        contact.decision_maker_source = "reasoning_model_page_evidence"
+                if not (contact.decision_maker_title or "").strip():
+                    title = str(
+                        page_level_facts.get("decision_maker_title") or ""
+                    ).strip()
+                    if title:
+                        contact.decision_maker_title = title[:120]
 
         # Store personalization facts as JSON
         if personalization_facts:
@@ -747,3 +942,304 @@ class AgenticResearchOrchestrator:
             result = self.research_contact(contact, depth=depth)
             results.append(result)
         return results
+
+    def _plan_person_search_queries(self, contact: Contact, depth: str) -> list[str]:
+        company = (contact.company or "").strip()
+        full_name = (
+            (contact.full_name or "").strip()
+            or f"{(contact.first_name or '').strip()} {(contact.last_name or '').strip()}".strip()
+        )
+        title = (contact.title or "").strip()
+        location = " ".join([p for p in [contact.city, contact.state] if p]).strip()
+
+        fallback_queries = [
+            f'site:linkedin.com/in "{full_name}" "{company}"',
+            f'"{full_name}" "{company}" {title}'.strip(),
+            f'"{company}" leadership team {location}'.strip(),
+            f'"{company}" "{full_name}" podcast OR interview OR webinar',
+            f'"{company}" press release OR news OR expansion',
+            f'"{company}" awards OR case study OR customer story',
+            f'"{company}" "{title or "owner"}" "{location or "USA"}"',
+        ]
+
+        max_queries = MAX_QUERIES_BY_DEPTH.get(depth, 6)
+
+        # If no LLM credentials, still run multi-query fallback sweep.
+        if not self.settings.openrouter_api_key:
+            return [q for q in fallback_queries if q][:max_queries]
+
+        system_prompt = (
+            "You generate high-yield Google queries for B2B personalization research. "
+            "Return strict JSON only."
+        )
+        user_prompt = (
+            "Create a compact set of search queries to learn actionable personalization "
+            "signals about this person/company for outbound email. Focus on recent activity, "
+            "initiatives, speaking/interviews, customer outcomes, and leadership priorities.\n\n"
+            f"Person: {full_name or 'unknown'}\n"
+            f"Title: {title or 'unknown'}\n"
+            f"Company: {company or 'unknown'}\n"
+            f"Location: {location or 'unknown'}\n"
+            f"Max queries: {max_queries}\n\n"
+            "Output format:\n"
+            '{"queries": ["..."], "rationale": "one sentence"}'
+        )
+
+        llm_queries: list[str] = []
+        try:
+            raw = self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.2,
+                model=self.research_model,
+            )
+            parsed = self._safe_json_from_model(raw)
+            candidate_queries = parsed.get("queries", [])
+            if isinstance(candidate_queries, list):
+                for q in candidate_queries:
+                    q_text = str(q or "").strip()
+                    if q_text:
+                        llm_queries.append(q_text)
+        except Exception as e:
+            logger.debug("LLM query planning failed, using fallback queries: %s", e)
+
+        merged: list[str] = []
+        seen: set[str] = set()
+        for q in llm_queries + fallback_queries:
+            key = q.lower().strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(q)
+            if len(merged) >= max_queries:
+                break
+
+        return merged
+
+    def _extract_personalization_facts_with_llm(
+        self,
+        contact: Contact,
+        person_search_hits: list[dict[str, str]],
+        company_data: dict[str, Any],
+        depth: str = "standard",
+    ) -> dict[str, Any]:
+        if not self.settings.openrouter_api_key or not person_search_hits:
+            return {}
+
+        max_hits = 8 if depth == "minimal" else 12 if depth == "standard" else 16
+        compact_hits = []
+        for h in person_search_hits[:max_hits]:
+            compact_hits.append(
+                {
+                    "title": (h.get("title", "") or "")[:200],
+                    "snippet": (h.get("snippet", "") or "")[:260],
+                    "url": h.get("link", ""),
+                }
+            )
+
+        system_prompt = (
+            "You are a research analyst extracting trustworthy personalization facts for B2B outreach. "
+            "Use only provided snippets. Avoid hallucinations. Return strict JSON only."
+        )
+        user_prompt = (
+            "Given these search results, extract high-signal personalization hooks and inferred priorities.\n"
+            f"Person: {(contact.full_name or '').strip()}\n"
+            f"Title: {(contact.title or '').strip()}\n"
+            f"Company: {(contact.company or '').strip()}\n"
+            f"Company summary: {(company_data.get('company_summary') or '')[:300]}\n\n"
+            f"Search hits JSON:\n{json.dumps(compact_hits)}\n\n"
+            "Output JSON schema:\n"
+            "{"
+            '"decision_maker_name":"",'
+            '"decision_maker_title":"",'
+            '"top_personalization_hooks":[{"fact":"", "why_it_matters":"", "source_url":"", "confidence":0.0}],'
+            '"likely_priorities":[""],'
+            '"talking_points":[""]'
+            "}"
+        )
+
+        try:
+            raw = self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.1,
+                model=self.research_model,
+            )
+            parsed = self._safe_json_from_model(raw)
+            if not isinstance(parsed, dict):
+                return {}
+
+            # Keep payload bounded and predictable.
+            hooks = parsed.get("top_personalization_hooks", [])
+            if isinstance(hooks, list):
+                parsed["top_personalization_hooks"] = hooks[:5]
+            priorities = parsed.get("likely_priorities", [])
+            if isinstance(priorities, list):
+                parsed["likely_priorities"] = [str(p)[:120] for p in priorities[:5]]
+            points = parsed.get("talking_points", [])
+            if isinstance(points, list):
+                parsed["talking_points"] = [str(p)[:140] for p in points[:6]]
+            return parsed
+        except Exception as e:
+            logger.debug("LLM personalization extraction failed: %s", e)
+            return {}
+
+    def _collect_evidence_pages(
+        self, search_hits: list[dict[str, str]], limit: int = 3
+    ) -> list[dict[str, str]]:
+        pages: list[dict[str, str]] = []
+        seen_domains: set[str] = set()
+        for hit in search_hits:
+            url = str(hit.get("link", "") or "").strip()
+            if not url:
+                continue
+            lowered = url.lower()
+            if "linkedin.com/" in lowered:
+                continue
+            if lowered.endswith(".pdf"):
+                continue
+
+            domain = ""
+            try:
+                from urllib.parse import urlparse
+
+                domain = (urlparse(url).netloc or "").lower().strip()
+            except Exception:
+                domain = ""
+            if domain.startswith("www."):
+                domain = domain[4:]
+            if domain and domain in seen_domains:
+                continue
+
+            page = self._fetch_page_summary(url)
+            if not page:
+                continue
+
+            pages.append(page)
+            if domain:
+                seen_domains.add(domain)
+            if len(pages) >= limit:
+                break
+        return pages
+
+    def _fetch_page_summary(self, url: str) -> dict[str, str]:
+        html = self.website._fetch_page(url)
+        if not html:
+            return {}
+
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        title = ""
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()
+
+        for tag in soup.find_all(["script", "style", "noscript", "svg", "form"]):
+            tag.decompose()
+
+        text = soup.get_text(separator=" ", strip=True)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return {}
+
+        summary = text[:900]
+        return {
+            "url": url,
+            "title": title[:220],
+            "summary": summary,
+        }
+
+    def _extract_page_level_personalization_facts(
+        self,
+        contact: Contact,
+        evidence_pages: list[dict[str, str]],
+        depth: str = "standard",
+    ) -> dict[str, Any]:
+        if not self.settings.openrouter_api_key or not evidence_pages:
+            return {}
+
+        max_pages = 1 if depth == "minimal" else 2 if depth == "standard" else 4
+        compact_pages = [
+            {
+                "url": p.get("url", ""),
+                "title": p.get("title", "")[:200],
+                "summary": p.get("summary", "")[:1000],
+            }
+            for p in evidence_pages[:max_pages]
+        ]
+
+        system_prompt = (
+            "You are a sales research analyst. Extract only grounded facts from page summaries. "
+            "No guessing. Return strict JSON."
+        )
+        user_prompt = (
+            f"Person: {(contact.full_name or '').strip()}\n"
+            f"Title: {(contact.title or '').strip()}\n"
+            f"Company: {(contact.company or '').strip()}\n"
+            f"Evidence pages JSON:\n{json.dumps(compact_pages)}\n\n"
+            "Output JSON schema:\n"
+            "{"
+            '"decision_maker_name":"",'
+            '"decision_maker_title":"",'
+            '"verified_facts":[{"fact":"", "source_url":"", "confidence":0.0}],'
+            '"personalization_angles":[""],'
+            '"do_not_claim":[""]'
+            "}"
+        )
+
+        try:
+            raw = self.llm.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.1,
+                model=self.research_model,
+            )
+            parsed = self._safe_json_from_model(raw)
+            if not isinstance(parsed, dict):
+                return {}
+
+            facts = parsed.get("verified_facts", [])
+            if isinstance(facts, list):
+                parsed["verified_facts"] = facts[:6]
+            angles = parsed.get("personalization_angles", [])
+            if isinstance(angles, list):
+                parsed["personalization_angles"] = [str(a)[:140] for a in angles[:6]]
+            dnc = parsed.get("do_not_claim", [])
+            if isinstance(dnc, list):
+                parsed["do_not_claim"] = [str(a)[:140] for a in dnc[:6]]
+
+            return parsed
+        except Exception as e:
+            logger.debug("Page-level fact extraction failed: %s", e)
+            return {}
+
+    def _safe_json_from_model(self, raw: str) -> dict[str, Any]:
+        text = (raw or "").strip()
+        if not text:
+            return {}
+
+        # Strip fenced code blocks if present.
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-zA-Z0-9_\-]*", "", text).strip()
+            text = re.sub(r"```$", "", text).strip()
+
+        # Try direct parse first.
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+            return {}
+        except Exception:
+            pass
+
+        # Fallback: parse first object-like block.
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                return {}
+        return {}

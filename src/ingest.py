@@ -39,6 +39,7 @@ ALIASES = {
         "position",
         "person title",
         "person job title",
+        "context",
     },
     "company": {
         "company",
@@ -75,7 +76,7 @@ ALIASES = {
     },
     "city": {"city", "town"},
     "state": {"state", "province", "region"},
-    "notes": {"notes", "description", "bio", "about"},
+    "notes": {"notes", "description", "bio", "about", "audience type", "audience_type"},
     "employee_count": {
         "employee_count",
         "employees",

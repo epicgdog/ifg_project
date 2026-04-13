@@ -18,6 +18,7 @@ class Settings:
     serper_api_key: str
     apify_api_token: str
     apify_linkedin_actor_id: str
+    openrouter_research_model: str
 
 
 def load_settings() -> Settings:
@@ -37,4 +38,5 @@ def load_settings() -> Settings:
         serper_api_key=os.getenv("SERPER_API_KEY", ""),
         apify_api_token=os.getenv("APIFY_API_TOKEN", ""),
         apify_linkedin_actor_id=os.getenv("APIFY_LINKEDIN_ACTOR_ID", ""),
+        openrouter_research_model=os.getenv("OPENROUTER_RESEARCH_MODEL", ""),
     )
