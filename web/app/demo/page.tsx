@@ -42,10 +42,33 @@ export default function DemoPage() {
       return (
         !busy &&
         (form.useSample || form.files.length > 0 || form.mode === "api_discovery") &&
-        (form.mode !== "api_discovery" || form.prospect_sources.length > 0) &&
-        !hunterNeedsDomains
+        (form.mode !== "api_discovery" || form.prospect_sources.length > 0)
       );
     })();
+
+  const runBlocker = React.useMemo(() => {
+    if (busy) return null;
+    if (form.mode !== "api_discovery" && !form.useSample && form.files.length === 0) {
+      return "Upload a CSV or enable the sample file to run.";
+    }
+    if (form.mode === "api_discovery" && form.prospect_sources.length === 0) {
+      return "Select at least one prospect source (Hunter or Apollo).";
+    }
+    return null;
+  }, [busy, form.mode, form.useSample, form.files.length, form.prospect_sources.length]);
+
+  const hunterDomainWarning = React.useMemo(() => {
+    const hunterSelected = form.prospect_sources.includes("hunter");
+    const hunterDomainsProvided =
+      form.hunter_domains
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean).length > 0;
+    if (form.mode === "api_discovery" && hunterSelected && !hunterDomainsProvided) {
+      return "Hunter can run without domains, but results are much better when domains are provided.";
+    }
+    return null;
+  }, [form.mode, form.prospect_sources, form.hunter_domains]);
 
   const onRun = async () => {
     try {
@@ -118,6 +141,10 @@ export default function DemoPage() {
             <p className="text-xs text-muted-foreground">
               Expect 30–90 s depending on contact count.
             </p>
+          )}
+          {!busy && runBlocker && <p className="text-xs text-amber-600">{runBlocker}</p>}
+          {!busy && !runBlocker && hunterDomainWarning && (
+            <p className="text-xs text-amber-600">{hunterDomainWarning}</p>
           )}
           {run.error && (
             <p className="text-sm text-red-500">Run failed: {run.error}</p>
