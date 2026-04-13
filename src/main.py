@@ -169,6 +169,12 @@ Examples:
         default=60,
         help="Minimum score to mark contact qualified (default: 60)",
     )
+    qualification_group.add_argument(
+        "--min-fit-score-for-enrich",
+        type=int,
+        default=65,
+        help="Minimum fit score to proceed to enrichment (default: 65; set 0 to disable filtering)",
+    )
 
     # Output options
     output_group = parser.add_argument_group("Output Options")
@@ -318,6 +324,7 @@ def main(argv: list[str] | None = None) -> int:
             enrichment_config=enrichment_config,
             icp_profile=icp_profile,
             min_qualification_score=args.min_qualification_score,
+            min_fit_score_for_enrich=args.min_fit_score_for_enrich,
             seed_contacts=seed_contacts,
             use_master_persona=not args.disable_master_persona,
             master_persona_path=args.master_persona_path,

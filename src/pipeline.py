@@ -23,6 +23,7 @@ class PipelineRunReport:
     """Report of pipeline execution metrics."""
 
     total_contacts: int = 0
+    skipped_low_fit_count: int = 0
     enriched_count: int = 0
     enrichment_errors: list[str] = field(default_factory=list)
     generation_failures: list[str] = field(default_factory=list)
@@ -39,6 +40,7 @@ class PipelineRunReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_contacts": self.total_contacts,
+            "skipped_low_fit_count": self.skipped_low_fit_count,
             "enriched_count": self.enriched_count,
             "enrichment_error_count": len(self.enrichment_errors),
             "generation_failure_count": len(self.generation_failures),
@@ -146,6 +148,7 @@ def run_pipeline(
     enrichment_config: EnrichmentConfig | None = None,
     icp_profile=None,
     min_qualification_score: int = 60,
+    min_fit_score_for_enrich: int = 65,
     seed_contacts: list[Contact] | None = None,
     use_master_persona: bool = True,
     master_persona_path: str = "MASTER.md",
@@ -180,6 +183,17 @@ def run_pipeline(
         seed_contacts if seed_contacts is not None else read_contacts(input_paths)
     )
     report.total_contacts = len(contacts)
+
+    # Stage 1.5: Pre-enrichment filter - skip low-fit contacts to save API credits
+    if min_fit_score_for_enrich > 0:
+        filtered_contacts = []
+        for contact in contacts:
+            classified = classify(contact)
+            if classified.fit_score >= min_fit_score_for_enrich:
+                filtered_contacts.append(contact)
+            else:
+                report.skipped_low_fit_count += 1
+        contacts = filtered_contacts
 
     # Stage 2: Enrich (optional)
     enrichment_results: list[EnrichmentResult] = []

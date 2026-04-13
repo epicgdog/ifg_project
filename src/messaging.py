@@ -6,6 +6,7 @@ from typing import Any
 from .master_persona import load_master_persona
 from .models import ClassifiedContact, GeneratedSequence
 from .openrouter_client import OpenRouterClient
+from .story_selector import get_story_selector
 from .validators import JSONValidator, SequenceValidator
 from .voice_profile import get_voice_profile
 
@@ -81,6 +82,19 @@ def build_sequence_prompt(
         step_examples_text = "\n\n".join(step_blocks)
         master_section = master.to_prompt_section()
 
+    # Dynamic story injection — select the single best-matching founder story.
+    selector = get_story_selector()
+    matched_stories = selector.select(
+        context_text=context_text if use_master_persona else " ".join([
+            c.title, c.company, c.industry, c.notes,
+            item.audience_reason, item.fit_reason,
+        ]),
+        audience=item.audience,
+        step=1,
+        k=1,
+    )
+    story_section = selector.format_for_prompt(matched_stories)
+
     exemplar_lines = [f"- {ex}" for ex in profile_exemplars]
     exemplar_text = "\n".join(exemplar_lines)
 
@@ -110,7 +124,7 @@ MASTER Persona Reference:
 
 Few-Shot Examples (adapt tone/structure, do not copy verbatim):
 {step_examples_text}
-
+{f"{chr(10)}{story_section}{chr(10)}" if story_section else ""}
 Audience Instructions:
 {_audience_instructions(item.audience)}
 

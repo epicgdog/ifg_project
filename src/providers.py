@@ -7,6 +7,7 @@ import requests
 
 from .config import Settings
 from .models import Contact
+from .rate_limiter import APOLLO_LIMITER, APIFY_LIMITER
 
 
 class ApolloProvider:
@@ -41,6 +42,7 @@ class ApolloProvider:
         if person_locations:
             payload["person_locations"] = person_locations
         headers = {"x-api-key": self._key, "Content-Type": "application/json"}
+        APOLLO_LIMITER.acquire()
         response = requests.post(
             f"{self._base}/mixed_people/search",
             headers=headers,
@@ -92,6 +94,7 @@ class ApolloProvider:
             "linkedin_url": contact.linkedin,
         }
         headers = {"x-api-key": self._key, "Content-Type": "application/json"}
+        APOLLO_LIMITER.acquire()
         response = requests.post(
             f"{self._base}/people/match",
             headers=headers,
@@ -146,6 +149,7 @@ class ApifyLinkedInProvider:
             "scrapeCompany": True,
             "includePrivateProfiles": False,
         }
+        APIFY_LIMITER.acquire()
         run = requests.post(
             f"{self._base}/acts/{self._actor}/runs",
             params={"token": self._token, "waitForFinish": 120},

@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "_notes": "Each story is a 1-3 sentence narrative Kory can reference naturally in Step 1 or 2. Trigger keywords are matched against contact industry/title/notes. Add new stories in the same format to expand personalization depth.",
+  "stories": [
+    {
+      "id": "origin_sioux_city",
+      "title": "Started in a conservative mom-and-pop asbestos shop",
+      "narrative": "I started in a small asbestos abatement shop in Sioux City — my parents ran it the old-fashioned way, no debt, no outside money. I bought it from them and spent the next decade making every mistake in the book before we hit 13 acquisitions and $200M in revenue.",
+      "trigger_keywords": ["abatement", "environmental", "remediation", "contracting", "contractor", "construction", "demo", "demolition", "trade", "trades", "specialty contractor", "industrial"],
+      "pain_signals": ["bootstrap", "family business", "founder", "startup"],
+      "best_for_step": [1],
+      "audiences": ["owner", "referral_advocate"]
+    },
+    {
+      "id": "bad_hire_overstaffing",
+      "title": "Hired for the revenue I hoped to have, not the revenue I had",
+      "narrative": "One of my costliest early mistakes was building headcount for the revenue I hoped to have, not the revenue I actually had. I hired six managers one quarter when I should have hired two, burned 18 months of cash, and had to rightsize in the worst possible way.",
+      "trigger_keywords": ["staffing", "hr", "workforce", "employees", "hiring", "labor", "crew", "team", "personnel", "recruitment"],
+      "pain_signals": ["scaling", "growth", "burnout", "over-hired", "payroll"],
+      "best_for_step": [1, 2],
+      "audiences": ["owner"]
+    },
+    {
+      "id": "yellow_iron_liability",
+      "title": "Fleet that looks like success is a liability on the balance sheet",
+      "narrative": "I used to brag about our equipment fleet — new trucks, heavy iron, all of it. Buyers do not see it that way. They see deferred maintenance and capital tied up in depreciating assets. The business that throws off clean cash is always worth more than the one with the nicest fleet.",
+      "trigger_keywords": ["equipment", "fleet", "trucks", "machinery", "heavy equipment", "excavation", "earthwork", "crane", "vehicles", "trailers", "assets", "capex"],
+      "pain_signals": ["equipment", "fleet", "assets", "capital"],
+      "best_for_step": [2],
+      "audiences": ["owner"]
+    },
+    {
+      "id": "ebitda_vs_topline",
+      "title": "Nobody cares about top line — buyers buy cash flow",
+      "narrative": "I spent years chasing revenue like it was the only number that mattered. Then I learned how buyers actually value a business. They do not care what you bill. They care what the business throws off after it pays for itself — and that gap is where most owner value either gets created or lost.",
+      "trigger_keywords": ["revenue", "sales", "growth", "billing", "top line", "income", "profit", "margin", "ebitda", "cash flow", "plumbing", "hvac", "electrical", "roofing", "pest", "landscaping"],
+      "pain_signals": ["growth", "revenue", "scaling", "valuation"],
+      "best_for_step": [2],
+      "audiences": ["owner", "referral_advocate"]
+    },
+    {
+      "id": "lonely_at_top",
+      "title": "The specific loneliness of being the only one who knows how bad it actually is",
+      "narrative": "There is a specific loneliness that hits when you are the only one who knows how close the margin really is. Your team thinks you have it figured out, your family wants you present, and you are sitting in your truck at 6am doing payroll math in your head.",
+      "trigger_keywords": ["owner", "operator", "founder", "president", "ceo", "principal", "proprietor", "solo", "bootstrapped"],
+      "pain_signals": ["burnout", "slog", "stress", "lonely", "pressure", "solo"],
+      "best_for_step": [1],
+      "audiences": ["owner"]
+    },
+    {
+      "id": "diligence_the_people",
+      "title": "Would rather evaluate a founder over a meal than read a hundred-page deck",
+      "narrative": "I have done acquisitions that looked flawless on paper and turned into unmitigated disasters inside of six months — not because the numbers lied, but because the culture was broken or the partners hated each other. Now I would rather sit across from someone at dinner and watch how they carry themselves than read a hundred-page deck.",
+      "trigger_keywords": ["advisor", "wealth", "financial advisor", "banker", "broker", "attorney", "accountant", "cpa", "m&a", "private equity", "investment", "consultant", "coach"],
+      "pain_signals": ["referral", "advisor", "partner", "diligence"],
+      "best_for_step": [1, 2],
+      "audiences": ["referral_advocate"]
+    },
+    {
+      "id": "replace_yourself",
+      "title": "You cannot sell a job — you can only sell a business",
+      "narrative": "The hardest thing I did before our exit was admitting that the business still needed me for too many things. You cannot sell a job, you can only sell a business. So we spent two years systematically replacing me in every critical function before we ever took a call from a buyer.",
+      "trigger_keywords": ["exit", "sell", "succession", "transition", "ownership transfer", "sale", "retire", "legacy", "next chapter", "buyout"],
+      "pain_signals": ["exit", "succession", "retirement", "transition"],
+      "best_for_step": [1, 2],
+      "audiences": ["owner"]
+    },
+    {
+      "id": "integration_culture_valuation",
+      "title": "Un-integrated acquisitions take a hit on valuation every time",
+      "narrative": "Every time we let an acquisition run siloed — different systems, different culture, different incentives — we left money on the table at exit. Buyers pay a premium for a unified business and discount heavily for a collection of separate shops wearing the same logo.",
+      "trigger_keywords": ["acquisition", "merger", "integration", "multi-location", "franchise", "branch", "rollup", "platform", "portfolio"],
+      "pain_signals": ["acquisition", "growth", "expansion", "multiple locations"],
+      "best_for_step": [2],
+      "audiences": ["owner", "referral_advocate"]
+    }
+  ]
+}

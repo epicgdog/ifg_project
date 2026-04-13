@@ -8,6 +8,7 @@ from typing import Any
 import requests
 
 from .config import Settings
+from .rate_limiter import OPENROUTER_LIMITER
 
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class OpenRouterClient:
         total_attempts = 1 + len(_RETRY_DELAYS)
 
         for attempt in range(total_attempts):
+            OPENROUTER_LIMITER.acquire()
             try:
                 response = requests.post(
                     url,

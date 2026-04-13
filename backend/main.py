@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routes import config as config_routes
 from .routes import run as run_routes
 from .routes import samples as samples_routes
+from .routes import webhooks as webhook_routes
 
 
 @asynccontextmanager
@@ -42,3 +43,4 @@ def root() -> dict[str, str]:
 app.include_router(config_routes.router)
 app.include_router(run_routes.router)
 app.include_router(samples_routes.router)
+app.include_router(webhook_routes.router)
