@@ -6,16 +6,6 @@ import { RUN_STAGES, type RunStage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { RunStreamState } from "@/lib/sse";
 
-const STAGE_WEIGHTS: Record<RunStage, number> = {
-  ingest: 12,
-  research: 22,
-  enrich: 18,
-  classify: 14,
-  generate: 22,
-  validate: 6,
-  export: 6,
-};
-
 const FRIENDLY_STEPS: { label: string; stages: RunStage[] }[] = [
   { label: "Ingesting & Cleaning Contacts", stages: ["ingest"] },
   { label: "Enriching Data via API", stages: ["enrich"] },
@@ -49,25 +39,6 @@ export function ProgressPanel({
       : 0;
 
   const currentRawIdx = stream.stage ? RUN_STAGES.indexOf(stream.stage) : -1;
-
-  const stageProgress =
-    stream.progress && stream.progress.total > 0
-      ? Math.min(1, Math.max(0, stream.progress.current / stream.progress.total))
-      : 0;
-
-  const weightedOverallPercent = React.useMemo(() => {
-    if (stream.status === "done") return 100;
-    if (!stream.stage) return 0;
-
-    let completedWeight = 0;
-    for (const s of stream.completedStages) {
-      completedWeight += STAGE_WEIGHTS[s] ?? 0;
-    }
-
-    const currentWeight = STAGE_WEIGHTS[stream.stage] ?? 0;
-    const inStage = currentWeight * stageProgress;
-    return Math.min(100, Math.max(0, completedWeight + inStage));
-  }, [stream.completedStages, stream.stage, stageProgress, stream.status]);
 
   const getStepStatus = (step: { stages: RunStage[] }): "done" | "active" | "pending" => {
     if (stream.status === "done") return "done";
@@ -183,22 +154,6 @@ export function ProgressPanel({
             </div>
           </div>
         )}
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Overall pipeline completion</span>
-            <span className="tabular-nums">{Math.round(weightedOverallPercent)}%</span>
-          </div>
-          <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
-            <div
-              className="h-full bg-emerald-500"
-              style={{
-                width: `${weightedOverallPercent}%`,
-                transition: "width 0.5s ease-in-out",
-              }}
-            />
-          </div>
-        </div>
 
         {/* Error state */}
         {stream.status === "error" && (
