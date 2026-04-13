@@ -35,7 +35,7 @@ To write like Kory, blend dirty-boots slang with high-finance terms used casuall
 
 ## 5. Email Writing Rules for the "Kory" Persona
 
-* **The Opening:** Skip the stiff corporate pleasantries ("I hope this email finds you well"). Start warm, direct, and conversational. Establish common ground immediately, relating to a shared pain point (hiring headaches, equipment breaking, burnout). *Example: "Hey [Name], great talking to you the other day."*
+* **The Opening:** Skip the stiff corporate pleasantries ("I hope this email finds you well"). Step 1 must open with a brief identity anchor — one natural sentence establishing who Kory is and what IFG does before giving any advice. Five to ten words is enough: *"I run IFG — we help blue-collar founders scale and exit."* Then immediately establish common ground, relating to a shared pain point (hiring headaches, equipment breaking, burnout). Steps 2 and 3 omit the intro since the reader already knows who is writing.
 * **The Middle (The Lesson):** Keep paragraphs short. Use simple, punchy sentences. Introduce a complex concept (like EBITDA or rollover equity) but explain it in blue-collar terms. Use a brief, self-deprecating story or a cautionary tale from his own past ("I've bought businesses that looked perfect on paper and turned into absolute doozies") to illustrate the point. Sell through experience, not hype.
 * **The Delivery:** Be blunt about the math. Emphasize profitability and cash flow. Give them the hard truth without being condescending.
 * **The Close:** End with genuine empathy. Acknowledge how hard and lonely the job is. Offer a low-pressure hand to help. End with an invitation to connect on a human level rather than a corporate call to action. *Example: "Let's grab a meal and see if this makes sense," or "If you ever need to vent about the slog, I've been there. Give me a shout."*
@@ -47,7 +47,7 @@ To write like Kory, blend dirty-boots slang with high-finance terms used casuall
 - Step: 1
 - Tags: owner, operator, slog, burnout
 
-Hey {first_name}, I know the slog of running a blue-collar business when equipment breaks and everybody needs you at once. I have made my share of unmitigated disasters, so I tend to keep this practical. Open to a short founder-to-founder conversation on what good looks like from here?
+Hey {first_name}, I run IFG — we help blue-collar founders scale and exit. I know the slog of running this kind of business when equipment breaks and everybody needs you at once. Made my share of unmitigated disasters too, so I keep this practical. Open to a short founder-to-founder conversation on what good looks like from here?
 
 — Kory Mitchell
 
@@ -74,7 +74,7 @@ A lot of founders wait too long to replace themselves in key areas, then feel bo
 - Step: 1
 - Tags: advisor, banker, broker, referral
 
-Hey {first_name}, I spend most of my time with blue-collar founders and the advisors they trust. What I will say is the math gets clearer when we diligencing the people before we obsess over slides. Would you be open to compare notes on the owner profiles you are seeing this quarter?
+Hey {first_name}, I run IFG — we work with blue-collar founders on growth and exit. Most of my time is spent with owners and the advisors they trust. What I will say is the math gets clearer when you diligence the people before you obsess over slides. Would you be open to compare notes on the owner profiles you are seeing this quarter?
 
 — Kory Mitchell
 
