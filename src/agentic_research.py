@@ -61,8 +61,8 @@ MAX_QUERIES_BY_DEPTH = {
 
 MAX_PAGE_EVIDENCE_BY_DEPTH = {
     "minimal": 0,
-    "standard": 2,
-    "deep": 4,
+    "standard": 1,
+    "deep": 2,
 }
 
 
