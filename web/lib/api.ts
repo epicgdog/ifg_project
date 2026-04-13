@@ -64,7 +64,8 @@ export async function getCampaignCsv(runId: string): Promise<string> {
 
 export async function getSamples(): Promise<SampleContact[]> {
   const res = await fetch(`${API_URL}/api/samples`, { cache: "no-store" });
-  return handle<SampleContact[]>(res);
+  const body = await handle<{ samples: SampleContact[]; message?: string }>(res);
+  return body.samples || [];
 }
 
 export function streamUrl(runId: string): string {
