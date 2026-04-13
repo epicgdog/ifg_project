@@ -46,6 +46,7 @@
     "software engineer",
     "product manager"
   ],
-  "min_employee_count": 5,
-  "min_revenue": 0
+  "min_employee_count": 20,
+  "min_revenue": 10000000,
+  "ebitda_proxy_note": "IFG target is $3M+ EBITDA. Apollo does not expose EBITDA directly, so we proxy with blue-collar revenue >= $10M OR employee count >= 20. Adjust per vertical in prospecting.py if needed."
 }

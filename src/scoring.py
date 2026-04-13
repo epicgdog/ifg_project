@@ -285,12 +285,19 @@ def classify(contact: Contact) -> ClassifiedContact:
     is_owner = bool(owner_hits)
     is_ra = bool(ra_hits)
 
-    if is_ra and not is_owner:
+    if is_ra:
         audience = "referral_advocate"
-        audience_reason = "Advisor-style title or profile keywords detected"
-    else:
+        audience_reason = (
+            "Advisor-style title or profile keywords detected"
+            if not is_owner
+            else "Advisor-style keywords present alongside owner title; routing to referral_advocate"
+        )
+    elif is_owner:
         audience = "owner"
         audience_reason = "Operator/founder title pattern detected"
+    else:
+        audience = "owner"
+        audience_reason = "No clear advisor signals; defaulting to owner"
 
     score = 40
     adjustments: list[dict[str, object]] = []

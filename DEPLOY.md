@@ -6,6 +6,12 @@ Expected total time: **~15 minutes** the first time, ~2 minutes per update after
 
 ---
 
+## Scaling to 500+ contacts per week
+
+The pipeline is already built for IO-bound concurrency rather than single-threaded batch. `pipeline.py` runs the agentic research stage and the classify/qualify/generate/schedule stage through `ThreadPoolExecutor` with a configurable `max_workers` (default 10), so a 500-contact run finishes in roughly the time of 50 serial contacts. A token-bucket `RateLimiter` (`src/rate_limiter.py`) throttles OpenRouter and Serper so we stay inside provider limits, and the TTL-backed `EnrichmentCache` (`src/enrichment.py`) plus the `--clear-enrich-cache` flag keep re-runs free. Outbound sending is decoupled: the pipeline writes `campaign_ready.csv` and `instantly_campaign.csv`, and `src/sender.py` pushes qualified leads to Instantly in batches of 50 with retries and `Retry-After` support. For weekly volumes beyond 2–3k contacts the next two investments are a persistent contacted-ledger (SQLite keyed by email hash, to enforce a 60-day re-touch window across runs) and moving the run loop behind a small RQ/Redis queue so partial progress survives restarts.
+
+---
+
 ## Prerequisites
 
 1. GitHub repository with this code pushed

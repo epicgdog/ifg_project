@@ -271,33 +271,55 @@ def run_pipeline(
                 report.skipped_low_fit_count += 1
         contacts = filtered_contacts
 
-    # Stage 1.75: Agentic research (optional)
+    # Stage 1.75: Agentic research (optional) — parallelized, per-contact isolated.
     if research and not dry_run and contacts:
         research_orchestrator = AgenticResearchOrchestrator(llm._settings)
-        researched_contacts: list[Contact] = []
-        for contact in contacts:
-            report.research_contacts_processed += 1
+        researched_contacts: list[Contact] = [None] * len(contacts)  # type: ignore[list-item]
+        effective_research_workers = max(1, min(int(max_workers), len(contacts)))
+
+        def _research_one(idx: int, contact: Contact):
             try:
                 result = research_orchestrator.research_contact(
                     contact, depth=research_depth
                 )
-                researched_contacts.append(result.contact)
-                report.research_queries_serper += result.serper_queries_used
-                report.research_websites_scraped += result.websites_scraped
-                report.research_emails_found += result.emails_found
+                return idx, result, None
+            except Exception as e:  # pragma: no cover - isolated per-contact error
+                return idx, None, f"{contact.row_id}: {str(e)}"
 
-                if getattr(result.contact, "verified_email", False):
-                    report.research_emails_verified += 1
-                if (getattr(result.contact, "decision_maker_name", "") or "").strip():
-                    report.research_decision_makers_found += 1
-                if (getattr(result.contact, "company_summary", "") or "").strip():
-                    report.research_company_summaries_extracted += 1
+        if effective_research_workers == 1 or len(contacts) == 1:
+            iterator = (_research_one(i, c) for i, c in enumerate(contacts))
+        else:
+            pool = ThreadPoolExecutor(max_workers=effective_research_workers)
+            futures = [
+                pool.submit(_research_one, i, c) for i, c in enumerate(contacts)
+            ]
+            iterator = (f.result() for f in futures)
 
-                if result.errors:
-                    report.research_failures.extend(result.errors)
-            except Exception as e:
-                report.research_failures.append(f"{contact.row_id}: {str(e)}")
-                researched_contacts.append(contact)
+        for idx, result, error in iterator:
+            report.research_contacts_processed += 1
+            if error is not None or result is None:
+                if error:
+                    report.research_failures.append(error)
+                researched_contacts[idx] = contacts[idx]
+                continue
+
+            researched_contacts[idx] = result.contact
+            report.research_queries_serper += result.serper_queries_used
+            report.research_websites_scraped += result.websites_scraped
+            report.research_emails_found += result.emails_found
+
+            if getattr(result.contact, "verified_email", False):
+                report.research_emails_verified += 1
+            if (getattr(result.contact, "decision_maker_name", "") or "").strip():
+                report.research_decision_makers_found += 1
+            if (getattr(result.contact, "company_summary", "") or "").strip():
+                report.research_company_summaries_extracted += 1
+
+            if result.errors:
+                report.research_failures.extend(result.errors)
+
+        if effective_research_workers > 1 and len(contacts) > 1:
+            pool.shutdown(wait=True)
         contacts = researched_contacts
 
     # Stage 2: Enrich (optional)

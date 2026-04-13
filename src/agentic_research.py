@@ -651,8 +651,9 @@ class AgenticResearchOrchestrator:
             results["audience_confidence"] = min(0.8 + (0.05 * len(ra_signals)), 1.0)
             results["classification_signals"] = [f"ra:{s}" for s in ra_signals]
         elif is_owner and is_ra:
-            # Mixed signals - moderate confidence
-            results["audience"] = "owner"  # Default to owner on conflict
+            # Mixed signals - route to referral_advocate (advisor signals dominate
+            # when explicit advisor keywords like CFO, wealth, CEPA, EOS are present).
+            results["audience"] = "referral_advocate"
             results["audience_confidence"] = 0.6
             results["classification_signals"] = [
                 f"owner:{s}" for s in owner_signals

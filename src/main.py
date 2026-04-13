@@ -220,6 +220,17 @@ Examples:
         type=str,
         help="Optional path to also export Instantly-formatted CSV",
     )
+    output_group.add_argument(
+        "--push-instantly",
+        type=str,
+        metavar="CAMPAIGN_ID",
+        help="Push qualified leads to this Instantly campaign via API (requires INSTANTLY_API_KEY)",
+    )
+    output_group.add_argument(
+        "--push-instantly-dry-run",
+        action="store_true",
+        help="Build the Instantly payload but skip the API call",
+    )
 
     return parser.parse_args(argv)
 
@@ -380,6 +391,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.instantly_output:
             export_path = export_instantly_campaign(args.output, args.instantly_output)
             print(f"Instantly CSV written to {export_path}")
+
+        if args.push_instantly:
+            from .sender import push_to_instantly
+
+            push_report = push_to_instantly(
+                csv_path=args.output,
+                campaign_id=args.push_instantly,
+                dry_run=args.push_instantly_dry_run,
+            )
+            print(
+                f"Instantly push: attempted={push_report.attempted} "
+                f"pushed={push_report.pushed} skipped_no_email={push_report.skipped_no_email} "
+                f"failed={push_report.failed}"
+            )
+            if push_report.errors:
+                print("  Errors:")
+                for err in push_report.errors[:5]:
+                    print(f"    - {err}")
 
         # Exit with warning if there were issues
         if report.generation_failures or report.enrichment_errors:

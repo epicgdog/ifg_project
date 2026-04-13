@@ -119,6 +119,41 @@ def _normalize_headers(headers: Iterable[str]) -> dict[str, str]:
     return out
 
 
+def _dedupe_key(contact: Contact) -> str:
+    """Stable identity key for dedup. Falls back through email → linkedin → name+company."""
+    email = (contact.email or "").strip().lower()
+    if email and "@" in email:
+        return f"email:{email}"
+    linkedin = (contact.linkedin or "").strip().lower().rstrip("/")
+    if linkedin:
+        return f"li:{linkedin}"
+    name = (contact.full_name or f"{contact.first_name} {contact.last_name}").strip().lower()
+    company = (contact.company or "").strip().lower()
+    if name and company:
+        return f"nc:{name}|{company}"
+    return f"row:{contact.row_id}"
+
+
+def _dedupe(contacts: list[Contact]) -> list[Contact]:
+    seen: dict[str, Contact] = {}
+    for c in contacts:
+        key = _dedupe_key(c)
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = c
+            continue
+        # Prefer the record with more populated fields.
+        def _density(x: Contact) -> int:
+            return sum(
+                1
+                for v in (x.email, x.linkedin, x.title, x.company, x.website, x.industry, x.city, x.state)
+                if v
+            )
+        if _density(c) > _density(existing):
+            seen[key] = c
+    return list(seen.values())
+
+
 def read_contacts(csv_paths: list[str]) -> list[Contact]:
     contacts: list[Contact] = []
     for path in csv_paths:
@@ -158,4 +193,4 @@ def read_contacts(csv_paths: list[str]) -> list[Contact]:
                         apollo_org_id=_field_value(row, mapped, "apollo_org_id"),
                     )
                 )
-    return contacts
+    return _dedupe(contacts)

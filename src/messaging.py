@@ -11,6 +11,46 @@ from .validators import JSONValidator, SequenceValidator
 from .voice_profile import get_voice_profile
 
 
+def _research_block(contact: Any) -> str:
+    """Format agentic-research findings into a prompt block. Empty if nothing useful."""
+    lines: list[str] = []
+
+    summary = (getattr(contact, "company_summary", "") or "").strip()
+    if summary:
+        lines.append(f"- Company summary (from website scrape): {summary[:400]}")
+
+    dm_name = (getattr(contact, "decision_maker_name", "") or "").strip()
+    dm_title = (getattr(contact, "decision_maker_title", "") or "").strip()
+    if dm_name or dm_title:
+        parts = ", ".join(p for p in [dm_name, dm_title] if p)
+        lines.append(f"- Identified decision maker: {parts}")
+
+    facts_json = (getattr(contact, "personalization_facts_json", "") or "").strip()
+    if facts_json:
+        try:
+            facts = json.loads(facts_json)
+            if isinstance(facts, dict):
+                for key in ("company_founded", "company_size", "company_context", "team_title"):
+                    if facts.get(key):
+                        value = str(facts[key])[:200]
+                        lines.append(f"- {key.replace('_', ' ').title()}: {value}")
+        except (ValueError, TypeError):
+            pass
+
+    maturity = int(getattr(contact, "company_maturity_score", 0) or 0)
+    if maturity > 0:
+        lines.append(f"- Company maturity score: {maturity}/100")
+
+    if not lines:
+        return ""
+
+    header = (
+        "\nResearch Signals (use 1-2 of these naturally in step 1 or 2; do NOT list them verbatim "
+        "and do NOT invent details not listed here):"
+    )
+    return header + "\n" + "\n".join(lines) + "\n"
+
+
 def _audience_instructions(audience: str) -> str:
     """Get audience-specific instructions."""
     if audience == "referral_advocate":
@@ -139,7 +179,7 @@ Contact Context:
 - Notes: {c.notes}
 - Audience reason: {item.audience_reason}
 - Fit reason: {item.fit_reason}
-
+{_research_block(c)}
 Data Sources:
 {provenance_text}
 
