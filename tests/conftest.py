@@ -1,10 +1,14 @@
-from __future__ import annotations
+"""
+Pytest configuration and shared fixtures for the test suite.
+"""
 
+import pytest
 import sys
 from pathlib import Path
 
-# Ensure the project root (containing the ``src`` package) is on ``sys.path``
-# so tests can ``from src.x import y`` regardless of where pytest is invoked.
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# Add src to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root / "src"))
+
+
+# Run with: pytest tests/ -v

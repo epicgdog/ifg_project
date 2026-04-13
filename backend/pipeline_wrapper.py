@@ -271,14 +271,21 @@ def execute(
             {"current": len(contacts), "total": len(contacts), "stage": "enrich"},
         )
 
-    # Hard skip contacts with no LinkedIn after enrichment.
-    linkedin_ready: list[EnrichmentResult] = []
+    # New quality gate: verified_email && (linkedin || decision_maker_name)
+    contactable_results: list[EnrichmentResult] = []
     for result in enrichment_results:
-        if (result.contact.linkedin or "").strip():
-            linkedin_ready.append(result)
+        contact = result.contact
+        has_verified_email = getattr(contact, 'verified_email', False) and contact.email
+        has_identity = contact.linkedin or getattr(contact, 'decision_maker_name', '')
+
+        if has_verified_email and has_identity:
+            contactable_results.append(result)
         else:
-            report.skipped_missing_linkedin_count += 1
-    enrichment_results = linkedin_ready
+            if not has_verified_email:
+                report.skipped_unverified_email_count += 1
+            if not has_identity:
+                report.skipped_no_identity_count += 1
+    enrichment_results = contactable_results
 
     # EBITDA filter (between enrichment and classification)
     if min_ebitda and min_ebitda > 0:

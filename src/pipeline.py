@@ -30,7 +30,9 @@ class PipelineRunReport:
     apollo_fallback_attempts: int = 0
     apollo_fallback_successes: int = 0
     skipped_low_fit_count: int = 0
-    skipped_missing_linkedin_count: int = 0
+    skipped_missing_linkedin_count: int = 0  # Deprecated: keep for backward compat
+    skipped_unverified_email_count: int = 0
+    skipped_no_identity_count: int = 0
     enriched_count: int = 0
     discovery_errors: list[str] = field(default_factory=list)
     enrichment_errors: list[str] = field(default_factory=list)
@@ -44,6 +46,24 @@ class PipelineRunReport:
     owner_count: int = 0
     referral_advocate_count: int = 0
     owner_high_readiness_count: int = 0
+    
+    # Agentic research metrics (new)
+    research_contacts_processed: int = 0
+    research_queries_serper: int = 0
+    research_websites_scraped: int = 0
+    research_emails_found: int = 0
+    research_emails_verified: int = 0
+    research_decision_makers_found: int = 0
+    research_company_summaries_extracted: int = 0
+    research_failures: list[str] = field(default_factory=list)
+    
+    # New quality gate metrics
+    skipped_unverified_email_count: int = 0
+    skipped_no_identity_count: int = 0
+    
+    # Audience & maturity metrics
+    avg_audience_confidence: float = 0.0
+    avg_company_maturity_score: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +76,8 @@ class PipelineRunReport:
             "apollo_fallback_successes": self.apollo_fallback_successes,
             "skipped_low_fit_count": self.skipped_low_fit_count,
             "skipped_missing_linkedin_count": self.skipped_missing_linkedin_count,
+            "skipped_unverified_email_count": self.skipped_unverified_email_count,
+            "skipped_no_identity_count": self.skipped_no_identity_count,
             "discovery_error_count": len(self.discovery_errors),
             "enriched_count": self.enriched_count,
             "enrichment_error_count": len(self.enrichment_errors),
@@ -69,6 +91,21 @@ class PipelineRunReport:
             "owner_count": self.owner_count,
             "referral_advocate_count": self.referral_advocate_count,
             "owner_high_readiness_count": self.owner_high_readiness_count,
+            # Agentic research metrics
+            "research_contacts_processed": self.research_contacts_processed,
+            "research_queries_serper": self.research_queries_serper,
+            "research_websites_scraped": self.research_websites_scraped,
+            "research_emails_found": self.research_emails_found,
+            "research_emails_verified": self.research_emails_verified,
+            "research_decision_makers_found": self.research_decision_makers_found,
+            "research_company_summaries_extracted": self.research_company_summaries_extracted,
+            "research_failure_count": len(self.research_failures),
+            # Quality gate metrics
+            "skipped_unverified_email_count": self.skipped_unverified_email_count,
+            "skipped_no_identity_count": self.skipped_no_identity_count,
+            # Audience & maturity metrics
+            "avg_audience_confidence": round(self.avg_audience_confidence, 2),
+            "avg_company_maturity_score": round(self.avg_company_maturity_score, 1),
         }
 
 
@@ -165,7 +202,8 @@ def run_pipeline(
     icp_profile=None,
     min_qualification_score: int = 60,
     min_fit_score_for_enrich: int = 65,
-    hard_skip_missing_linkedin: bool = True,
+    require_verified_email: bool = True,
+    require_identity_confirmation: bool = True,  # linkedin OR decision_maker_name
     seed_contacts: list[Contact] | None = None,
     use_master_persona: bool = True,
     master_persona_path: str = "MASTER.md",
@@ -254,15 +292,25 @@ def run_pipeline(
             for c in contacts
         ]
 
-    # Stage 2.5: Hard skip contacts without LinkedIn after enrichment
-    if hard_skip_missing_linkedin:
-        linkedin_ready: list[EnrichmentResult] = []
+    # Stage 2.5: Quality gate - verified email + identity confirmation
+    if require_verified_email or require_identity_confirmation:
+        contactable_results: list[EnrichmentResult] = []
         for result in enrichment_results:
-            if (result.contact.linkedin or "").strip():
-                linkedin_ready.append(result)
+            contact = result.contact
+            has_verified_email = contact.verified_email and contact.email
+            has_identity = contact.linkedin or contact.decision_maker_name
+
+            email_pass = not require_verified_email or has_verified_email
+            identity_pass = not require_identity_confirmation or has_identity
+
+            if email_pass and identity_pass:
+                contactable_results.append(result)
             else:
-                report.skipped_missing_linkedin_count += 1
-        enrichment_results = linkedin_ready
+                if not email_pass:
+                    report.skipped_unverified_email_count += 1
+                if not identity_pass:
+                    report.skipped_no_identity_count += 1
+        enrichment_results = contactable_results
 
     # Stage 3-5: Classify, Generate, Schedule (parallel) -> Export (serial, ordered)
     output = Path(output_path)
@@ -355,6 +403,8 @@ def run_pipeline(
                 processed[idx] = fut.result()
 
     fit_scores: list[int] = []
+    audience_confidences: list[float] = []
+    maturity_scores: list[int] = []
     count = 0
 
     with open(output, "w", newline="", encoding="utf-8") as f:
@@ -370,6 +420,8 @@ def run_pipeline(
             generation_error = item["generation_error"]
 
             fit_scores.append(classified.fit_score)
+            audience_confidences.append(classified.audience_confidence)
+            maturity_scores.append(classified.maturity_score)
 
             if classified.audience == "owner":
                 report.owner_count += 1
@@ -447,5 +499,7 @@ def run_pipeline(
 
     report.processing_time_seconds = time.time() - start_time
     report.avg_fit_score = sum(fit_scores) / len(fit_scores) if fit_scores else 0
+    report.avg_audience_confidence = sum(audience_confidences) / len(audience_confidences) if audience_confidences else 0
+    report.avg_company_maturity_score = sum(maturity_scores) / len(maturity_scores) if maturity_scores else 0
 
     return count, report

@@ -40,6 +40,7 @@ export interface RunResponse {
 
 export type RunStage =
   | "ingest"
+  | "research"  // NEW
   | "enrich"
   | "classify"
   | "generate"
@@ -48,6 +49,7 @@ export type RunStage =
 
 export const RUN_STAGES: RunStage[] = [
   "ingest",
+  "research",  // NEW
   "enrich",
   "classify",
   "generate",
@@ -81,6 +83,22 @@ export interface RunReport {
   apollo_fallback_attempts?: number;
   apollo_fallback_successes?: number;
   discovery_error_count?: number;
+  research_contacts_processed?: number;
+  research_queries_serper?: number;
+  research_websites_scraped?: number;
+  research_emails_found?: number;
+  research_emails_verified?: number;
+  research_decision_makers_found?: number;
+  research_company_summaries_extracted?: number;
+  research_failure_count?: number;
+
+  // New quality gate metrics
+  skipped_unverified_email_count?: number;
+  skipped_no_identity_count?: number;
+
+  // Audience & maturity metrics
+  avg_audience_confidence?: number;
+  avg_company_maturity_score?: number;
   discovery_errors?: string[];
   [key: string]: unknown;
 }

@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 
 from .config import Settings
 from .models import Contact
@@ -397,3 +398,524 @@ def _strv(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _extract_domain(url: str) -> str:
+    """Extract domain from URL, handling various formats."""
+    from urllib.parse import urlparse
+    
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc or parsed.path
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain.lower()
+    except Exception:
+        return url.lower()
+
+
+class SerperProvider:
+    """Serper.dev API provider for web search-based discovery."""
+    
+    def __init__(self, settings: Settings) -> None:
+        self._key = settings.serper_api_key
+        self._base = "https://google.serper.dev"
+        self.last_status_code: int = 0
+        self.last_error: str = ""
+    
+    def _clear_last_error(self) -> None:
+        self.last_status_code = 0
+        self.last_error = ""
+    
+    def _set_last_error(self, status_code: int, body: str, context: str) -> None:
+        self.last_status_code = status_code
+        trimmed = " ".join((body or "").split())[:300]
+        self.last_error = (
+            f"{context}: HTTP {status_code}{f' - {trimmed}' if trimmed else ''}"
+        )
+    
+    @property
+    def enabled(self) -> bool:
+        return bool(self._key)
+    
+    def search(
+        self,
+        query: str,
+        num: int = 10,
+        page: int = 1,
+        country: str | None = None,
+        language: str | None = None,
+        location: str | None = None,
+    ) -> dict:
+        """Generic search via Serper.dev Google API."""
+        if not self.enabled:
+            self._set_last_error(0, "Serper API key missing", "search")
+            return {}
+        
+        payload: dict[str, Any] = {
+            "q": query,
+            "num": min(num, 100),
+            "page": page,
+        }
+        if country:
+            payload["gl"] = country
+        if language:
+            payload["hl"] = language
+        if location:
+            payload["location"] = location
+        
+        headers = {"X-API-KEY": self._key, "Content-Type": "application/json"}
+        
+        try:
+            response = requests.post(
+                f"{self._base}/search",
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+            if response.status_code >= 400:
+                self._set_last_error(
+                    response.status_code,
+                    response.text,
+                    "search",
+                )
+                return {}
+            
+            self._clear_last_error()
+            return response.json()
+        except Exception as e:
+            self._set_last_error(0, str(e), "search")
+            return {}
+    
+    def search_companies(
+        self,
+        industry: str,
+        location: str,
+        num: int = 100,
+    ) -> list[dict]:
+        """Find companies by industry and location using Google search."""
+        if not self.enabled:
+            self._set_last_error(0, "Serper API key missing", "search_companies")
+            return []
+        
+        query = f'"{industry}" company "{location}" "about us" OR "team"'
+        
+        result = self.search(query=query, num=min(num, 100))
+        if not result:
+            return []
+        
+        companies: list[dict] = []
+        organic = result.get("organic", [])
+        
+        for item in organic:
+            title = _strv(item.get("title"))
+            link = _strv(item.get("link"))
+            snippet = _strv(item.get("snippet"))
+            
+            if not link:
+                continue
+            
+            domain = _extract_domain(link)
+            company_name = title.split("|")[0].split("-")[0].strip()
+            
+            companies.append({
+                "name": company_name,
+                "website": link,
+                "domain": domain,
+                "description": snippet,
+                "source": "serper",
+            })
+        
+        knowledge_graph = result.get("knowledgeGraph", {})
+        if knowledge_graph:
+            kg_title = _strv(knowledge_graph.get("title"))
+            kg_website = _strv(knowledge_graph.get("website"))
+            if kg_title and kg_website:
+                companies.insert(0, {
+                    "name": kg_title,
+                    "website": kg_website,
+                    "domain": _extract_domain(kg_website),
+                    "description": _strv(knowledge_graph.get("description")),
+                    "source": "serper",
+                })
+        
+        return companies
+    
+    def search_linkedin_profiles(
+        self,
+        title: str,
+        location: str | None = None,
+        company: str | None = None,
+        num: int = 50,
+    ) -> list[dict]:
+        """Discover LinkedIn profiles matching criteria."""
+        if not self.enabled:
+            self._set_last_error(0, "Serper API key missing", "search_linkedin_profiles")
+            return []
+        
+        query_parts = [f'site:linkedin.com/in "{title}"']
+        if company:
+            query_parts.append(f'"{company}"')
+        if location:
+            query_parts.append(f'"{location}"')
+        
+        query = " ".join(query_parts)
+        
+        result = self.search(query=query, num=min(num, 100))
+        if not result:
+            return []
+        
+        profiles: list[dict] = []
+        organic = result.get("organic", [])
+        
+        for item in organic:
+            title_text = _strv(item.get("title"))
+            link = _strv(item.get("link"))
+            snippet = _strv(item.get("snippet"))
+            
+            if not link or "linkedin.com/in/" not in link:
+                continue
+            
+            name_parts = title_text.split("-")[0].strip().split(" ")
+            first_name = name_parts[0] if name_parts else ""
+            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+            
+            title_match = re.search(r"-\s*([^|]+)", title_text)
+            profile_title = title_match.group(1).strip() if title_match else ""
+            
+            company_match = re.search(r"at\s+([^|]+)", snippet)
+            company_name = company_match.group(1).strip() if company_match else ""
+            
+            profiles.append({
+                "first_name": first_name,
+                "last_name": last_name,
+                "full_name": f"{first_name} {last_name}".strip(),
+                "title": profile_title,
+                "company": company_name,
+                "linkedin": link,
+                "website": "",
+                "source": "serper",
+            })
+        
+        return profiles
+    
+    def search_decision_makers(
+        self,
+        company_name: str,
+        titles: list[str],
+        location: str | None = None,
+    ) -> list[dict]:
+        """Find specific roles at a company."""
+        if not self.enabled:
+            self._set_last_error(0, "Serper API key missing", "search_decision_makers")
+            return []
+        
+        results: list[dict] = []
+        
+        for title in titles:
+            query_parts = [
+                f'site:linkedin.com/in "{title}"',
+                f'"{company_name}"',
+            ]
+            if location:
+                query_parts.append(f'"{location}"')
+            
+            query = " ".join(query_parts)
+            result = self.search(query=query, num=20)
+            
+            if not result:
+                continue
+            
+            organic = result.get("organic", [])
+            for item in organic:
+                title_text = _strv(item.get("title"))
+                link = _strv(item.get("link"))
+                snippet = _strv(item.get("snippet"))
+                
+                if not link or "linkedin.com/in/" not in link:
+                    continue
+                
+                name_parts = title_text.split("-")[0].strip().split(" ")
+                first_name = name_parts[0] if name_parts else ""
+                last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+                
+                title_match = re.search(r"-\s*([^|]+)", title_text)
+                profile_title = title_match.group(1).strip() if title_match else title
+                
+                results.append({
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "full_name": f"{first_name} {last_name}".strip(),
+                    "title": profile_title,
+                    "company": company_name,
+                    "linkedin": link,
+                    "website": "",
+                    "source": "serper",
+                })
+        
+        seen = set()
+        unique_results: list[dict] = []
+        for r in results:
+            key = (r.get("full_name"), r.get("company"))
+            if key not in seen:
+                seen.add(key)
+                unique_results.append(r)
+        
+        return unique_results
+    
+    def extract_company_info(self, company_name: str) -> dict:
+        """Get company details from knowledge graph."""
+        if not self.enabled:
+            self._set_last_error(0, "Serper API key missing", "extract_company_info")
+            return {}
+        
+        query = f'"{company_name}" company'
+        result = self.search(query=query, num=10)
+        
+        if not result:
+            return {}
+        
+        knowledge_graph = result.get("knowledgeGraph", {})
+        if knowledge_graph:
+            return {
+                "name": _strv(knowledge_graph.get("title")),
+                "website": _strv(knowledge_graph.get("website")),
+                "description": _strv(knowledge_graph.get("description")),
+                "industry": _strv(knowledge_graph.get("attributes", {}).get("Industry")),
+                "headquarters": _strv(knowledge_graph.get("attributes", {}).get("Headquarters")),
+                "founded": _strv(knowledge_graph.get("attributes", {}).get("Founded")),
+                "employees": _strv(knowledge_graph.get("attributes", {}).get("Employees")),
+                "source": "serper",
+            }
+        
+        organic = result.get("organic", [])
+        if organic:
+            first = organic[0]
+            return {
+                "name": company_name,
+                "website": _strv(first.get("link")),
+                "description": _strv(first.get("snippet")),
+                "industry": "",
+                "headquarters": "",
+                "founded": "",
+                "employees": "",
+                "source": "serper",
+            }
+        
+        return {}
+
+
+class WebsiteResearchProvider:
+    """Scrape company websites for context and decision-maker info."""
+    
+    def __init__(self, settings: Settings) -> None:
+        # No API key needed for basic scraping
+        self._timeout = 30
+        self.last_error = ""
+    
+    def _set_error(self, message: str) -> None:
+        self.last_error = message
+    
+    def _clear_error(self) -> None:
+        self.last_error = ""
+    
+    def _fetch_page(self, url: str) -> str:
+        """Fetch page content with error handling."""
+        try:
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+            }
+            
+            response = requests.get(url, headers=headers, timeout=self._timeout)
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            self._set_error(f"Failed to fetch {url}: {str(e)}")
+            return ""
+    
+    def scrape_company_page(self, url: str) -> dict:
+        """Extract company description, team info from website."""
+        self._clear_error()
+        
+        html = self._fetch_page(url)
+        if not html:
+            return {}
+        
+        soup = BeautifulSoup(html, "html.parser")
+        domain = _extract_domain(url)
+        
+        # Extract meta description
+        meta_desc = ""
+        meta_tag = soup.find("meta", attrs={"name": "description"})
+        if meta_tag:
+            meta_desc = _strv(meta_tag.get("content"))
+        
+        if not meta_desc:
+            og_desc = soup.find("meta", attrs={"property": "og:description"})
+            if og_desc:
+                meta_desc = _strv(og_desc.get("content"))
+        
+        # Extract about page content
+        about_content = ""
+        about_patterns = ["about", "about-us", "aboutus", "company", "who-we-are"]
+        for pattern in about_patterns:
+            about_link = soup.find("a", href=re.compile(pattern, re.I))
+            if about_link:
+                href = about_link.get("href")
+                if href:
+                    if href.startswith("/"):
+                        about_url = f"https://{domain}{href}"
+                    elif not href.startswith("http"):
+                        about_url = f"https://{domain}/{href}"
+                    else:
+                        about_url = href
+                    
+                    about_html = self._fetch_page(about_url)
+                    if about_html:
+                        about_soup = BeautifulSoup(about_html, "html.parser")
+                        for tag in about_soup.find_all(["script", "style", "nav", "footer"]):
+                            tag.decompose()
+                        text = about_soup.get_text(separator=" ", strip=True)
+                        about_content = text[:500]
+                        break
+        
+        # If no about page, use main content
+        if not about_content:
+            for tag in soup.find_all(["script", "style", "nav", "footer"]):
+                tag.decompose()
+            main = soup.find("main") or soup.find("div", class_=re.compile("content|main", re.I))
+            if main:
+                about_content = main.get_text(separator=" ", strip=True)[:500]
+            else:
+                about_content = soup.get_text(separator=" ", strip=True)[:500]
+        
+        # Extract team info
+        team = self.extract_team_members(html, domain)
+        
+        return {
+            "domain": domain,
+            "website": url if url.startswith("http") else f"https://{url}",
+            "meta_description": meta_desc,
+            "about_content": about_content,
+            "team_members": team,
+        }
+    
+    def extract_team_members(self, html: str, domain: str) -> list[dict]:
+        """Parse leadership/team pages for member info."""
+        self._clear_error()
+        
+        soup = BeautifulSoup(html, "html.parser")
+        members: list[dict] = []
+        
+        # Look for team/leadership sections
+        team_patterns = [
+            re.compile(r"team|leadership|executives|management|founders", re.I),
+        ]
+        
+        for pattern in team_patterns:
+            sections = soup.find_all(["section", "div"], class_=pattern)
+            if not sections:
+                sections = soup.find_all(id=pattern)
+            
+            for section in sections:
+                cards = section.find_all(["div", "article"], class_=re.compile(r"member|person|team|card", re.I))
+                if not cards:
+                    cards = section.find_all("li")
+                
+                for card in cards:
+                    name = ""
+                    title = ""
+                    
+                    # Try to find name
+                    name_elem = card.find(["h2", "h3", "h4", "strong", "span"], class_=re.compile(r"name|title", re.I))
+                    if not name_elem:
+                        name_elem = card.find("h3") or card.find("h2")
+                    if name_elem:
+                        name = _strv(name_elem.get_text())
+                    
+                    # Try to find title/role
+                    title_elem = card.find(["span", "p", "div"], class_=re.compile(r"role|position|title|job", re.I))
+                    if title_elem:
+                        title = _strv(title_elem.get_text())
+                    elif name_elem:
+                        next_elem = name_elem.find_next_sibling()
+                        if next_elem:
+                            title = _strv(next_elem.get_text())
+                    
+                    if name and len(name) > 1 and len(name) < 100:
+                        name_parts = name.split(" ")
+                        members.append({
+                            "first_name": name_parts[0],
+                            "last_name": " ".join(name_parts[1:]),
+                            "full_name": name,
+                            "title": title,
+                            "domain": domain,
+                        })
+        
+        return members
+    
+    def find_decision_maker(self, domain: str, titles: list[str]) -> dict | None:
+        """Hunt for specific roles at a company."""
+        self._clear_error()
+        
+        if not domain.startswith(("http://", "https://")):
+            url = f"https://{domain}"
+        else:
+            url = domain
+        
+        # Try team/leadership pages first
+        team_paths = ["/team", "/leadership", "/about", "/company", "/executives", "/management"]
+        
+        for path in team_paths:
+            page_url = url.rstrip("/") + path
+            html = self._fetch_page(page_url)
+            if not html:
+                continue
+            
+            soup = BeautifulSoup(html, "html.parser")
+            text = soup.get_text(separator=" ", strip=True)
+            
+            for target_title in titles:
+                pattern = re.compile(rf"\b{re.escape(target_title)}\b", re.I)
+                if pattern.search(text):
+                    # Found a match, extract team members and find the specific one
+                    members = self.extract_team_members(html, _extract_domain(domain))
+                    for member in members:
+                        if pattern.search(member.get("title", "")):
+                            return member
+        
+        # Fallback: scrape main page
+        html = self._fetch_page(url)
+        if html:
+            members = self.extract_team_members(html, _extract_domain(domain))
+            for member in members:
+                for target_title in titles:
+                    if target_title.lower() in member.get("title", "").lower():
+                        return member
+        
+        return None
+    
+    def get_company_summary(self, domain: str) -> str:
+        """Get concise company description from website."""
+        self._clear_error()
+        
+        info = self.scrape_company_page(domain)
+        if not info:
+            return ""
+        
+        parts = []
+        if info.get("meta_description"):
+            parts.append(info["meta_description"])
+        if info.get("about_content"):
+            parts.append(info["about_content"][:300])
+        
+        summary = " ".join(parts)
+        return summary[:500].strip()

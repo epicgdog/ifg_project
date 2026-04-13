@@ -65,8 +65,12 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
       value: pickMetric(r, ["skipped_low_fit_count"]),
     },
     {
-      label: "Skipped (No LinkedIn)",
-      value: pickMetric(r, ["skipped_missing_linkedin_count"]),
+      label: "Skipped (No Identity)",
+      value: pickMetric(r, ["skipped_no_identity_count"]),
+    },
+    {
+      label: "Skipped (Unverified Email)",
+      value: pickMetric(r, ["skipped_unverified_email_count"]),
     },
     { label: "Enriched", value: pickMetric(r, ["enriched", "enriched_count"]) },
     { label: "Qualified", value: pickMetric(r, ["qualified", "qualified_count"]) },
@@ -162,6 +166,58 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
                 domains to keep discovery running.
               </div>
             )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Research diagnostics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+            <MetricCard
+              label="Contacts researched"
+              value={pickMetric(r, ["research_contacts_processed"])}
+            />
+            <MetricCard
+              label="Serper queries"
+              value={pickMetric(r, ["research_queries_serper"])}
+            />
+            <MetricCard
+              label="Websites scraped"
+              value={pickMetric(r, ["research_websites_scraped"])}
+            />
+            <MetricCard
+              label="Emails found"
+              value={pickMetric(r, ["research_emails_found"])}
+            />
+            <MetricCard
+              label="DMs identified"
+              value={pickMetric(r, ["research_decision_makers_found"])}
+            />
+            <MetricCard
+              label="Company summaries"
+              value={pickMetric(r, ["research_company_summaries_extracted"])}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Audience &amp; Maturity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <MetricCard
+              label="Avg Audience Confidence"
+              value={pickMetric(r, ["avg_audience_confidence"])}
+            />
+            <MetricCard
+              label="Avg Maturity Score"
+              value={pickMetric(r, ["avg_company_maturity_score"])}
+            />
+          </div>
         </CardContent>
       </Card>
 
