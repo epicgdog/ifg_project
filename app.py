@@ -141,12 +141,20 @@ with st.sidebar:
     state = st.text_input("State filter", value="CO")
     prospect_sources = st.multiselect(
         "Prospecting sources",
-        options=["apollo", "hunter"],
+        options=["apollo", "hunter", "linkedin_sales_nav"],
         default=["apollo"],
     )
     prospect_limit = st.number_input("Prospect limit", min_value=1, value=25)
     hunter_domains_input = st.text_input(
         "Hunter domains (comma-separated)",
+        value="",
+    )
+    sales_nav_titles_input = st.text_input(
+        "Sales Navigator titles (comma-separated)",
+        value="owner, founder, ceo",
+    )
+    sales_nav_companies_input = st.text_input(
+        "Sales Navigator companies (comma-separated, optional)",
         value="",
     )
 
@@ -265,6 +273,16 @@ if run_clicked:
                     prospect_limit=int(prospect_limit),
                     hunter_domains=[
                         d.strip() for d in hunter_domains_input.split(",") if d.strip()
+                    ],
+                    sales_nav_titles=[
+                        t.strip()
+                        for t in sales_nav_titles_input.split(",")
+                        if t.strip()
+                    ],
+                    sales_nav_companies=[
+                        c.strip()
+                        for c in sales_nav_companies_input.split(",")
+                        if c.strip()
                     ],
                     referral_advocates_only=referral_advocates_only,
                     state=state,

@@ -52,7 +52,7 @@ export default function DemoPage() {
       return "Upload a CSV or enable the sample file to run.";
     }
     if (form.mode === "api_discovery" && form.prospect_sources.length === 0) {
-      return "Select at least one prospect source (Hunter or Apollo).";
+      return "Select at least one lead source (Hunter, Apollo, or LinkedIn Sales Navigator).";
     }
     return null;
   }, [busy, form.mode, form.useSample, form.files.length, form.prospect_sources.length]);
@@ -104,9 +104,9 @@ export default function DemoPage() {
           )}
         >
           <div className="mb-4">
-            <h1 className="text-2xl font-semibold tracking-tight">Campaign Builder</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Campaign Launchpad</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Upload contacts, define your ICP, and generate reviewable outbound sequences.
+              Define audience, enable AI profiling, and launch evidence-backed outbound campaigns.
             </p>
           </div>
           <RunForm value={form} onChange={setForm} disabled={busy} />
@@ -132,14 +132,14 @@ export default function DemoPage() {
                 </>
               ) : (
                 <>
-                  <Play className="h-4 w-4" /> Run pipeline
+                  <Play className="h-4 w-4" /> Launch campaign build
                 </>
               )}
             </Button>
           )}
           {!busy && !isDone && (
             <p className="text-xs text-muted-foreground">
-              Expect 30–90 s depending on contact count.
+              Typical launch prep time: 30-90s depending on contact volume.
             </p>
           )}
           {!busy && runBlocker && <p className="text-xs text-amber-600">{runBlocker}</p>}

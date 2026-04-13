@@ -34,6 +34,8 @@ export interface RunFormValues {
   prospect_sources: ProspectSource[];
   prospect_limit: number;
   hunter_domains: string;
+  sales_nav_titles: string;
+  sales_nav_companies: string;
   min_ebitda: number;
 }
 
@@ -55,6 +57,8 @@ const DEFAULTS: RunFormValues = {
   prospect_sources: ["hunter"],
   prospect_limit: 25,
   hunter_domains: "",
+  sales_nav_titles: "owner, founder, ceo",
+  sales_nav_companies: "",
   min_ebitda: 3_000_000,
 };
 
@@ -79,6 +83,14 @@ export function toRunRequest(v: RunFormValues, fileIds: string[]): RunRequest {
     prospect_sources: v.prospect_sources,
     prospect_limit: v.prospect_limit,
     hunter_domains: v.hunter_domains
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    sales_nav_titles: v.sales_nav_titles
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    sales_nav_companies: v.sales_nav_companies
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
@@ -128,7 +140,7 @@ function helperForSource(source: ProspectSource): string {
     return "Works on free plans. Needs domains and usually returns email/name/title first.";
   }
   if (source === "linkedin_sales_nav") {
-    return "Sales Navigator-style people discovery using LinkedIn query operators.";
+    return "Sales Navigator-style discovery. Use title/company seed terms for tighter targeting.";
   }
   return "Richer company + LinkedIn data when your Apollo plan allows people search.";
 }
@@ -237,7 +249,7 @@ export function RunForm({
                 disabled={disabled}
               />
               <Label htmlFor="use-sample" className="cursor-pointer text-sm text-muted-foreground">
-                Use built-in sample file instead
+                Use built-in sample file (Apollo random 5)
               </Label>
             </div>
           </div>
@@ -387,6 +399,38 @@ export function RunForm({
                 </p>
               )}
             </div>
+
+            {v.prospect_sources.includes("linkedin_sales_nav") && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sales-nav-titles">Sales Navigator seed titles</Label>
+                  <Input
+                    id="sales-nav-titles"
+                    placeholder="owner, founder, president, ceo"
+                    value={v.sales_nav_titles}
+                    onChange={(e) => set("sales_nav_titles", e.target.value)}
+                    disabled={disabled}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated titles to prioritize in people search.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="sales-nav-companies">Sales Navigator seed companies</Label>
+                  <Input
+                    id="sales-nav-companies"
+                    placeholder="Diamond Companies, Iron Woman Construction"
+                    value={v.sales_nav_companies}
+                    onChange={(e) => set("sales_nav_companies", e.target.value)}
+                    disabled={disabled}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional comma-separated target companies to narrow discovery.
+                  </p>
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

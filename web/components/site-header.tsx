@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Settings } from "lucide-react";
+import { Settings, UserPlus } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfigHealthDialog } from "./config-health";
 import {
@@ -39,16 +39,26 @@ export function SiteHeader() {
             <DialogTrigger asChild>
               <button
                 className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="API settings"
+                aria-label="Connect infrastructure"
               >
                 <Settings className="h-4 w-4" />
               </button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>API Configuration</DialogTitle>
+                <DialogTitle>Connect infrastructure</DialogTitle>
               </DialogHeader>
+              <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                Keep this simple: connect lead sources and AI infrastructure once, then your
+                team can launch campaigns without touching technical settings.
+              </div>
               <ConfigHealthDialog />
+              <button
+                type="button"
+                className="mt-1 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                <UserPlus className="h-3.5 w-3.5" /> Invite IT/admin to configure
+              </button>
             </DialogContent>
           </Dialog>
           <ThemeToggle />

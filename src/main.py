@@ -64,7 +64,7 @@ Examples:
         "--prospect-source",
         nargs="+",
         default=["apollo"],
-        choices=["apollo", "hunter"],
+        choices=["apollo", "hunter", "linkedin_sales_nav"],
         help="Prospecting source(s) to use (default: apollo)",
     )
     prospecting_group.add_argument(
@@ -78,6 +78,18 @@ Examples:
         nargs="*",
         default=[],
         help="Optional domains for Hunter discovery (e.g., acme.com)",
+    )
+    prospecting_group.add_argument(
+        "--sales-nav-title",
+        nargs="*",
+        default=[],
+        help="Optional title seeds for LinkedIn Sales Navigator-style search",
+    )
+    prospecting_group.add_argument(
+        "--sales-nav-company",
+        nargs="*",
+        default=[],
+        help="Optional company seeds for LinkedIn Sales Navigator-style search",
     )
     prospecting_group.add_argument(
         "--state",
@@ -302,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.prospect_limit,
             sources=args.prospect_source,
             hunter_domains=args.hunter_domain,
+            sales_nav_titles=args.sales_nav_title,
+            sales_nav_companies=args.sales_nav_company,
             timeout_seconds=args.enrich_timeout,
         )
         seed_contacts = discovered
@@ -329,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
             sources=args.prospect_source,
             limit=args.prospect_limit,
             hunter_domains=args.hunter_domain,
+            sales_nav_titles=args.sales_nav_title,
+            sales_nav_companies=args.sales_nav_company,
             timeout_seconds=args.enrich_timeout,
         )
         seed_contacts = discovered

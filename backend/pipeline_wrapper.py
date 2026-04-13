@@ -149,6 +149,8 @@ def execute(
     prospect_sources: list[str] | None = None,
     prospect_limit: int = 25,
     hunter_domains: list[str] | None = None,
+    sales_nav_titles: list[str] | None = None,
+    sales_nav_companies: list[str] | None = None,
     min_ebitda: int = 0,
     icp_overrides: dict[str, Any] | None = None,
     emit: EventEmitter,
@@ -194,6 +196,8 @@ def execute(
                 limit=prospect_limit,
                 sources=sources,
                 hunter_domains=hunter_domains or [],
+                sales_nav_titles=sales_nav_titles or [],
+                sales_nav_companies=sales_nav_companies or [],
                 diagnostics=discovery_diag,
             )
         else:
@@ -203,6 +207,8 @@ def execute(
                 sources=sources,
                 limit=prospect_limit,
                 hunter_domains=hunter_domains or [],
+                sales_nav_titles=sales_nav_titles or [],
+                sales_nav_companies=sales_nav_companies or [],
                 diagnostics=discovery_diag,
             )
         discovered_count = len(discovered)

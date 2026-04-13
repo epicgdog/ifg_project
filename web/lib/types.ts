@@ -36,6 +36,8 @@ export interface RunRequest {
   prospect_sources: ProspectSource[];
   prospect_limit: number;
   hunter_domains: string[];
+  sales_nav_titles?: string[];
+  sales_nav_companies?: string[];
   min_ebitda: number;
 }
 

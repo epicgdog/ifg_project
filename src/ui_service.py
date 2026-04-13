@@ -40,6 +40,8 @@ def run_campaign_pipeline(
     prospect_sources: list[str] | None = None,
     prospect_limit: int = 25,
     hunter_domains: list[str] | None = None,
+    sales_nav_titles: list[str] | None = None,
+    sales_nav_companies: list[str] | None = None,
     referral_advocates_only: bool = False,
     state: str = "CO",
     use_master_persona: bool = True,
@@ -81,6 +83,8 @@ def run_campaign_pipeline(
                 limit=prospect_limit,
                 sources=prospect_sources or ["apollo"],
                 hunter_domains=hunter_domains or [],
+                sales_nav_titles=sales_nav_titles or [],
+                sales_nav_companies=sales_nav_companies or [],
                 timeout_seconds=enrich_timeout,
             )
         else:
@@ -90,6 +94,8 @@ def run_campaign_pipeline(
                 sources=prospect_sources or ["apollo"],
                 limit=prospect_limit,
                 hunter_domains=hunter_domains or [],
+                sales_nav_titles=sales_nav_titles or [],
+                sales_nav_companies=sales_nav_companies or [],
                 timeout_seconds=enrich_timeout,
             )
         seed_contacts = discovered

@@ -252,6 +252,8 @@ def discover_contacts(
     sources: list[str],
     limit: int,
     hunter_domains: list[str] | None = None,
+    sales_nav_titles: list[str] | None = None,
+    sales_nav_companies: list[str] | None = None,
     timeout_seconds: int = 60,
     diagnostics: dict[str, object] | None = None,
 ) -> list[Contact]:
@@ -375,14 +377,20 @@ def discover_contacts(
         serper = SerperProvider(settings)
         if serper.enabled:
             remaining = max(0, limit - len(contacts))
-            title_hints = list(
-                dict.fromkeys(
-                    icp_profile.target_owner_title_keywords[:4]
-                    + icp_profile.target_referral_title_keywords[:4]
+            title_hints = [t.strip() for t in (sales_nav_titles or []) if t.strip()]
+            if not title_hints:
+                title_hints = list(
+                    dict.fromkeys(
+                        icp_profile.target_owner_title_keywords[:4]
+                        + icp_profile.target_referral_title_keywords[:4]
+                    )
                 )
-            )
             locations = icp_profile.target_states[:3] or ["US"]
-            per_query = max(5, min(20, remaining))
+            company_seeds = [
+                c.strip() for c in (sales_nav_companies or []) if c.strip()
+            ] or [None]
+            query_slots = max(1, len(locations) * len(title_hints) * len(company_seeds))
+            per_query = max(3, min(15, max(1, remaining // query_slots)))
 
             for location in locations:
                 if len(contacts) >= limit:
@@ -390,27 +398,35 @@ def discover_contacts(
                 for title in title_hints:
                     if len(contacts) >= limit:
                         break
-                    profiles = serper.search_linkedin_profiles(
-                        title=title,
-                        location=location,
-                        company=None,
-                        num=per_query,
-                    )
-                    for item in profiles:
-                        item.setdefault(
-                            "notes",
-                            "Sourced via LinkedIn Sales Navigator-style search",
-                        )
-                        contacts.append(
-                            _to_contact(
-                                item,
-                                source="prospect:linkedin_sales_nav",
-                                index=index,
-                            )
-                        )
-                        index += 1
+                    for company_seed in company_seeds:
                         if len(contacts) >= limit:
                             break
+                        profiles = serper.search_linkedin_profiles(
+                            title=title,
+                            location=location,
+                            company=company_seed,
+                            num=per_query,
+                        )
+                        for item in profiles:
+                            item.setdefault(
+                                "notes",
+                                "Sourced via LinkedIn Sales Navigator-style search",
+                            )
+                            contacts.append(
+                                _to_contact(
+                                    item,
+                                    source="prospect:linkedin_sales_nav",
+                                    index=index,
+                                )
+                            )
+                            index += 1
+                            if len(contacts) >= limit:
+                                break
+        else:
+            _diag_add_error(
+                diagnostics,
+                "LinkedIn Sales Navigator discovery skipped: SERPER_API_KEY is missing on backend.",
+            )
 
     return dedupe_contacts(contacts)[:limit]
 
@@ -423,6 +439,8 @@ def discover_referral_advocates(
     role_keys: list[str] | None = None,
     sources: list[str] | None = None,
     hunter_domains: list[str] | None = None,
+    sales_nav_titles: list[str] | None = None,
+    sales_nav_companies: list[str] | None = None,
     timeout_seconds: int = 60,
     diagnostics: dict[str, object] | None = None,
 ) -> list[Contact]:
@@ -542,32 +560,46 @@ def discover_referral_advocates(
     if "linkedin_sales_nav" in normalized_sources and len(contacts) < limit:
         serper = SerperProvider(settings)
         if serper.enabled:
-            role_titles = get_ra_role_titles(role_keys)[:12]
+            role_titles = [t.strip() for t in (sales_nav_titles or []) if t.strip()]
+            if not role_titles:
+                role_titles = get_ra_role_titles(role_keys)[:12]
             remaining = max(0, limit - len(contacts))
-            per_query = max(5, min(20, remaining))
+            company_seeds = [
+                c.strip() for c in (sales_nav_companies or []) if c.strip()
+            ] or [None]
+            query_slots = max(1, len(role_titles) * len(company_seeds))
+            per_query = max(3, min(15, max(1, remaining // query_slots)))
             for role in role_titles:
                 if len(contacts) >= limit:
                     break
-                profiles = serper.search_linkedin_profiles(
-                    title=role,
-                    location=state,
-                    company=None,
-                    num=per_query,
-                )
-                for item in profiles:
-                    item["notes"] = (
-                        "Sourced via LinkedIn Sales Navigator-style RA search"
-                    )
-                    contacts.append(
-                        _to_contact(
-                            item,
-                            source="prospect:linkedin_sales_nav_ra",
-                            index=index,
-                        )
-                    )
-                    index += 1
+                for company_seed in company_seeds:
                     if len(contacts) >= limit:
                         break
+                    profiles = serper.search_linkedin_profiles(
+                        title=role,
+                        location=state,
+                        company=company_seed,
+                        num=per_query,
+                    )
+                    for item in profiles:
+                        item["notes"] = (
+                            "Sourced via LinkedIn Sales Navigator-style RA search"
+                        )
+                        contacts.append(
+                            _to_contact(
+                                item,
+                                source="prospect:linkedin_sales_nav_ra",
+                                index=index,
+                            )
+                        )
+                        index += 1
+                        if len(contacts) >= limit:
+                            break
+        else:
+            _diag_add_error(
+                diagnostics,
+                "LinkedIn Sales Navigator discovery skipped: SERPER_API_KEY is missing on backend.",
+            )
 
     for contact in contacts:
         if not contact.state:

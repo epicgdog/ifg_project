@@ -121,8 +121,8 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
               Campaign results
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Personalized 3-step sequences generated in Kory Mitchell's voice.
-              Review below, then deploy to your sending tool of choice.
+              Executive view of campaign readiness: lead quality, contactability,
+              and send-ready drafts.
             </p>
           </div>
         </div>
@@ -131,33 +131,50 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
           <MetricCard
             label="Total leads processed"
             value={total}
-            hint="Contacts ingested this run"
+            hint="Total prospects evaluated"
             icon={<Users className="h-5 w-5" />}
             accent="sky"
           />
           <MetricCard
             label="Qualified targets"
             value={qualified}
-            hint="Met $3M+ EBITDA proxy or RA criteria"
+            hint="Match target profile and fit threshold"
             icon={<Target className="h-5 w-5" />}
             accent="emerald"
           />
           <MetricCard
             label="Emails verified"
             value={emailsVerified}
-            hint="Deliverable contact emails found"
+            hint="Deliverable contacts ready for outreach"
             icon={<MailCheck className="h-5 w-5" />}
             accent="violet"
           />
           <MetricCard
             label="Outreach drafted"
             value={outreachDrafted}
-            hint="3-step sequences written in Kory's voice"
+            hint="Personalized sequences ready for review"
             icon={<Sparkles className="h-5 w-5" />}
             accent="amber"
           />
         </div>
       </div>
+
+      <Card className="border-emerald-500/20 bg-gradient-to-r from-emerald-500/5 via-transparent to-transparent">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold">Business impact snapshot</div>
+              <div className="text-xs text-muted-foreground">
+                Estimated time saved this run: ~
+                {Math.max(1, Math.round((outreachDrafted * 6) / 60))} hours of manual prospect research + first-draft writing.
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Pipeline conversion: {total > 0 ? Math.round((qualified / total) * 100) : 0}% qualified
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-transparent to-transparent">
         <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">

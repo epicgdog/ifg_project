@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api", tags=["run"])
 
 UPLOAD_DIR = Path("backend/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+BUILT_IN_SAMPLE_PATH = Path("data/apollo-contacts-export-random-5.csv")
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +51,8 @@ class RunRequest(BaseModel):
     prospect_sources: list[str] = Field(default_factory=lambda: ["hunter"])
     prospect_limit: int = 25
     hunter_domains: list[str] = Field(default_factory=list)
+    sales_nav_titles: list[str] = Field(default_factory=list)
+    sales_nav_companies: list[str] = Field(default_factory=list)
     min_ebitda: int = 0
     csv_file_ids: list[str] = Field(default_factory=list)
     icp_overrides: dict[str, Any] | None = None
@@ -76,9 +79,12 @@ def _paths_for_ids(file_ids: list[str]) -> list[str]:
     paths: list[str] = []
     for file_id in file_ids:
         if file_id == "sample":
-            sample = Path("data/sample_contacts.csv")
-            if sample.exists():
-                paths.append(str(sample))
+            if BUILT_IN_SAMPLE_PATH.exists():
+                paths.append(str(BUILT_IN_SAMPLE_PATH))
+            else:
+                fallback = Path("data/sample_contacts.csv")
+                if fallback.exists():
+                    paths.append(str(fallback))
             continue
         p = UPLOAD_DIR / f"{file_id}.csv"
         if p.exists():
@@ -123,6 +129,8 @@ def _run_in_thread(state: RunState, payload: RunRequest) -> None:
             prospect_sources=payload.prospect_sources,
             prospect_limit=payload.prospect_limit,
             hunter_domains=payload.hunter_domains,
+            sales_nav_titles=payload.sales_nav_titles,
+            sales_nav_companies=payload.sales_nav_companies,
             min_ebitda=payload.min_ebitda,
             icp_overrides=payload.icp_overrides,
             emit=emit,

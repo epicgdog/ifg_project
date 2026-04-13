@@ -3,14 +3,12 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Briefcase,
   CheckCircle2,
-  Copy,
   Play,
-  Puzzle,
-  Search,
-  Settings2,
   Sparkles,
-  Upload,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { Badge } from "@/components/ui/badge";
@@ -22,30 +20,7 @@ import { cn } from "@/lib/utils";
 
 type SourceKey = "hunter" | "apollo" | "linkedin_sales_nav";
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = React.useState(false);
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // noop
-    }
-  };
-  return (
-    <button
-      type="button"
-      onClick={onCopy}
-      className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
-    >
-      {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-function StepCard({
+function JourneyStep({
   number,
   title,
   body,
@@ -76,51 +51,39 @@ export default function TutorialPage() {
   const sourceGuides: Record<
     SourceKey,
     {
-      name: string;
+      label: string;
       status: boolean;
-      needs: string;
-      demoSetting: string;
-      why: string;
-      queryExample: string;
+      businessFit: string;
+      setupText: string;
+      quickStart: string;
     }
   > = {
     hunter: {
-      name: "Hunter",
+      label: "Hunter",
       status: !!data?.hunter,
-      needs: "HUNTER_API_KEY",
-      demoSetting: "Mode: API discovery | Sources: Hunter | Add domains",
-      why: "Fast route to verified emails from known domains.",
-      queryExample: "Domains: rockymtnroofing.com, summitplumbing.co",
+      businessFit: "Best for verified-email-first prospecting from known target domains.",
+      setupText: "Connect Hunter once, then use domain lists to generate contactable leads quickly.",
+      quickStart: "In Demo: Find New Leads -> Source: Hunter -> Add target domains.",
     },
     apollo: {
-      name: "Apollo",
+      label: "Apollo",
       status: !!data?.apollo,
-      needs: "APOLLO_API_KEY + plan access for mixed_people/search",
-      demoSetting: "Mode: API discovery | Sources: Apollo",
-      why: "Best for broad title + company discovery when plan allows people search.",
-      queryExample:
-        "Titles: owner, founder, ceo, advisor | Industry keywords: roofing, hvac, construction",
+      businessFit: "Best for broad lead generation by title, industry, and company profile.",
+      setupText: "Use Apollo when you need volume and richer account context.",
+      quickStart: "In Demo: Find New Leads -> Source: Apollo -> Set audience and launch.",
     },
     linkedin_sales_nav: {
-      name: "LinkedIn Sales Navigator",
+      label: "LinkedIn Sales Navigator",
       status: !!data?.sales_navigator,
-      needs: "SERPER_API_KEY (Sales Nav-style search operators)",
-      demoSetting: "Mode: API discovery | Sources: LinkedIn Sales Navigator",
-      why: "Strong for finding people pages and leadership context quickly.",
-      queryExample:
-        'site:linkedin.com/in "fractional cfo" "Colorado" OR site:linkedin.com/in "owner" "construction"',
+      businessFit: "Best for finding high-value people and leadership context.",
+      setupText: "Use title and company seed terms to guide people discovery.",
+      quickStart:
+        "In Demo: Find New Leads -> Source: LinkedIn Sales Navigator -> Add seed titles/companies.",
     },
   };
 
   const selected = sourceGuides[source];
-
-  const envSnippet = `OPENROUTER_API_KEY=...\nOPENROUTER_MODEL=deepseek/deepseek-v3.2\nOPENROUTER_RESEARCH_MODEL=deepseek/deepseek-v3.2\nSERPER_API_KEY=...\nHUNTER_API_KEY=...\nAPOLLO_API_KEY=...\nAPIFY_API_TOKEN=...\nAPIFY_LINKEDIN_ACTOR_ID=...`;
-
-  const runChecklist = [
-    !!data?.openrouter,
-    !!data?.serper,
-    selected.status,
-  ];
+  const launchReady = !!data?.openrouter && !!data?.serper && selected.status;
 
   return (
     <>
@@ -128,45 +91,51 @@ export default function TutorialPage() {
       <main className="mx-auto max-w-5xl space-y-8 px-6 py-10">
         <section className="space-y-3">
           <Badge variant="secondary">
-            <Sparkles className="mr-1 h-3 w-3" /> Interactive setup guide
+            <Sparkles className="mr-1 h-3 w-3" /> Campaign Launchpad
           </Badge>
-          <h1 className="text-3xl font-semibold tracking-tight">Demo setup tutorial</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Executive launch flow</h1>
           <p className="text-sm text-muted-foreground max-w-3xl">
-            This walkthrough is now operational: pick your integration source, verify keys, run
-            discovery, and validate that research signals flow into personalized drafts.
+            This page is designed for business leaders: choose your target source, set AI
+            strategy, preview outcomes, and launch campaigns without technical setup complexity.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button asChild>
               <Link href="/demo">
-                <Play className="mr-1.5 h-4 w-4" /> Open demo
+                <Play className="mr-1.5 h-4 w-4" /> Open Campaign Launchpad
               </Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/samples">
-                View samples <ArrowRight className="ml-1 h-4 w-4" />
+                Preview sample outputs <ArrowRight className="ml-1 h-4 w-4" />
               </Link>
             </Button>
           </div>
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3">
-          <StepCard
+        <section className="grid gap-3 md:grid-cols-4">
+          <JourneyStep
             number="01"
-            title="Configure keys"
-            body="Set OpenRouter + Serper, then at least one prospect source (Hunter, Apollo, or Sales Nav)."
-            done={!!data?.openrouter && !!data?.serper}
-          />
-          <StepCard
-            number="02"
-            title="Choose source"
-            body="Use source-specific discovery based on your data and access level."
+            title="Define target"
+            body="Choose where leads come from and align to your current GTM motion."
             done={selected.status}
           />
-          <StepCard
+          <JourneyStep
+            number="02"
+            title="Set AI strategy"
+            body="Pick research depth based on speed vs. personalization quality."
+            done={!!data?.openrouter}
+          />
+          <JourneyStep
             number="03"
-            title="Run and verify"
-            body="Check live activity feed and evidence hooks in sequence drawer before deploying."
-            done={runChecklist.every(Boolean)}
+            title="Preview business output"
+            body="Validate evidence-backed drafts before full deployment."
+            done={!!data?.serper}
+          />
+          <JourneyStep
+            number="04"
+            title="Launch readiness"
+            body="Confirm infrastructure and move into campaign execution."
+            done={launchReady}
           />
         </section>
 
@@ -174,35 +143,9 @@ export default function TutorialPage() {
 
         <section className="space-y-4">
           <div className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4 text-primary" />
-            <h2 className="text-xl font-semibold tracking-tight">1) Environment setup</h2>
+            <Users className="h-4 w-4 text-primary" />
+            <h2 className="text-xl font-semibold tracking-tight">1) Define the target</h2>
           </div>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">.env template</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="relative rounded-md border bg-muted/40 font-mono text-xs">
-                <pre className="overflow-x-auto p-3 pr-20 leading-relaxed">{envSnippet}</pre>
-                <div className="absolute right-2 top-2">
-                  <CopyButton text={envSnippet} />
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Minimum for research pipeline: <code>OPENROUTER_API_KEY</code> + <code>SERPER_API_KEY</code>.
-              </p>
-            </CardContent>
-          </Card>
-        </section>
-
-        <Separator />
-
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Puzzle className="h-4 w-4 text-primary" />
-            <h2 className="text-xl font-semibold tracking-tight">2) Pick integration path</h2>
-          </div>
-
           <div className="flex flex-wrap gap-2">
             {([
               ["hunter", "Hunter"],
@@ -224,23 +167,19 @@ export default function TutorialPage() {
               </button>
             ))}
           </div>
-
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center justify-between">
-                <span>{selected.name}</span>
+              <CardTitle className="flex items-center justify-between text-base">
+                <span>{selected.label}</span>
                 <Badge variant={selected.status ? "success" : "muted"}>
-                  {selected.status ? "Configured" : "Missing key"}
+                  {selected.status ? "Connected" : "Needs setup"}
                 </Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p><span className="font-medium">Required:</span> {selected.needs}</p>
-              <p><span className="font-medium">Demo setting:</span> {selected.demoSetting}</p>
-              <p><span className="font-medium">Why use it:</span> {selected.why}</p>
-              <div className="rounded-md border bg-muted/30 p-2 text-xs font-mono">
-                {selected.queryExample}
-              </div>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p><span className="font-medium text-foreground">Business fit:</span> {selected.businessFit}</p>
+              <p><span className="font-medium text-foreground">How to use:</span> {selected.setupText}</p>
+              <p><span className="font-medium text-foreground">Quick start:</span> {selected.quickStart}</p>
             </CardContent>
           </Card>
         </section>
@@ -249,16 +188,14 @@ export default function TutorialPage() {
 
         <section className="space-y-4">
           <div className="flex items-center gap-2">
-            <Upload className="h-4 w-4 text-primary" />
-            <h2 className="text-xl font-semibold tracking-tight">3) Run in demo</h2>
+            <Briefcase className="h-4 w-4 text-primary" />
+            <h2 className="text-xl font-semibold tracking-tight">2) Set AI strategy</h2>
           </div>
           <Card>
             <CardContent className="pt-4 text-sm text-muted-foreground space-y-2">
-              <p>In <Link href="/demo" className="underline">Demo</Link>:</p>
-              <p>- Mode: <span className="text-foreground">API discovery</span> or <span className="text-foreground">CSV + API</span></p>
-              <p>- Source: select <span className="text-foreground">{selected.name}</span></p>
-              <p>- Keep <span className="text-foreground">Agentic research = ON</span> and set depth to <span className="text-foreground">Deep</span></p>
-              <p>- Watch <span className="text-foreground">Live activity</span> for exact operations (queries, scraping, email lookup)</p>
+              <p>- In Demo, choose <span className="text-foreground">Research Quality: Standard or Deep Analysis</span>.</p>
+              <p>- Deep analysis gives stronger personalization and better executive-level relevance.</p>
+              <p>- Keep <span className="text-foreground">Contact Readiness Filter</span> on to protect rep time.</p>
             </CardContent>
           </Card>
         </section>
@@ -267,15 +204,30 @@ export default function TutorialPage() {
 
         <section className="space-y-4">
           <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-primary" />
-            <h2 className="text-xl font-semibold tracking-tight">4) Verify personalization quality</h2>
+            <Sparkles className="h-4 w-4 text-primary" />
+            <h2 className="text-xl font-semibold tracking-tight">3) Preview drafts and ROI</h2>
           </div>
           <Card>
             <CardContent className="pt-4 text-sm text-muted-foreground space-y-2">
-              <p>- Open a contact row in Results.</p>
-              <p>- Confirm <span className="text-foreground">Research evidence</span> shows grounded pages + hooks.</p>
-              <p>- Check step 1 or 2 references a concrete research signal (not generic fluff).</p>
-              <p>- If weak, increase depth or switch source (Apollo/Sales Nav often improves person context).</p>
+              <p>- Open results and verify: sourced leads to qualified targets to contactable leads to drafts ready.</p>
+              <p>- Spot-check evidence-backed personalization in the sequence drawer before launch.</p>
+              <p>- Use business impact cards to communicate time saved and conversion to leadership.</p>
+            </CardContent>
+          </Card>
+        </section>
+
+        <Separator />
+
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <UserPlus className="h-4 w-4 text-primary" />
+            <h2 className="text-xl font-semibold tracking-tight">4) Connect infrastructure (delegate if needed)</h2>
+          </div>
+          <Card>
+            <CardContent className="pt-4 text-sm text-muted-foreground space-y-2">
+              <p>- Click the header settings button to review connection status for all systems.</p>
+              <p>- If keys are missing, use the built-in <span className="text-foreground">Invite IT/admin to configure</span> action.</p>
+              <p>- Once connected, campaign managers can run weekly without touching technical setup.</p>
             </CardContent>
           </Card>
         </section>
@@ -283,14 +235,14 @@ export default function TutorialPage() {
         <section className="rounded-xl border bg-muted/30 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold tracking-tight">Ready to run it now?</h3>
+              <h3 className="text-lg font-semibold tracking-tight">Ready to launch?</h3>
               <p className="text-sm text-muted-foreground">
-                Open demo, pick source, run deep research, then review evidence-backed drafts.
+                Open the Campaign Launchpad and run your first executive-ready pipeline.
               </p>
             </div>
             <Button asChild>
               <Link href="/demo">
-                <Play className="mr-1.5 h-4 w-4" /> Go to demo
+                <Play className="mr-1.5 h-4 w-4" /> Go to Launchpad
               </Link>
             </Button>
           </div>
