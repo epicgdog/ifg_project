@@ -86,11 +86,11 @@ export function RunForm({
 
   const onDrop = React.useCallback(
     (accepted: File[]) => {
-      set("files", [...v.files, ...accepted]);
-      set("useSample", false);
+      // Merge both changes in one onChange call — two separate set() calls
+      // would close over the same stale `v` and the second would overwrite the first.
+      onChange({ ...v, files: [...v.files, ...accepted], useSample: false });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [v.files]
+    [v, onChange]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
