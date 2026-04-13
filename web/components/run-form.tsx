@@ -44,7 +44,7 @@ const DEFAULTS: RunFormValues = {
   min_fit_score_for_enrich: 65,
   target_audience: "mixed",
   state: "CO",
-  prospect_sources: ["apollo"],
+  prospect_sources: ["hunter"],
   prospect_limit: 25,
   hunter_domains: "",
   min_ebitda: 3_000_000,
@@ -111,6 +111,13 @@ const AUDIENCE_OPTIONS: { value: TargetAudience; label: string; description: str
   },
 ];
 
+function helperForSource(source: ProspectSource): string {
+  if (source === "hunter") {
+    return "Works on free plans. Needs domains and usually returns email/name/title first.";
+  }
+  return "Richer company + LinkedIn data when your Apollo plan allows people search.";
+}
+
 export function RunForm({
   value,
   onChange,
@@ -151,6 +158,13 @@ export function RunForm({
   };
 
   const ownerFieldsDisabled = disabled || v.target_audience === "referral_advocate";
+  const hunterSelected = v.prospect_sources.includes("hunter");
+  const hunterDomainsProvided =
+    v.hunter_domains
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean).length > 0;
+  const hunterDomainsRequired = v.mode === "api_discovery" && hunterSelected;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -312,7 +326,7 @@ export function RunForm({
             <div className="space-y-2">
               <Label>Contact sources</Label>
               <div className="flex flex-col gap-2">
-                {(["apollo", "hunter"] as ProspectSource[]).map((src) => (
+                {(["hunter", "apollo"] as ProspectSource[]).map((src) => (
                   <div key={src} className="flex items-center gap-2">
                     <Checkbox
                       id={`src-${src}`}
@@ -323,6 +337,9 @@ export function RunForm({
                     <Label htmlFor={`src-${src}`} className="cursor-pointer capitalize">
                       {src}
                     </Label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {helperForSource(src)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -344,11 +361,16 @@ export function RunForm({
               <Label htmlFor="hunter-domains">Hunter domains</Label>
               <Input
                 id="hunter-domains"
-                placeholder="acme.com, example.com"
+                placeholder="roofco.com, hvacpros.com"
                 value={v.hunter_domains}
                 onChange={(e) => set("hunter_domains", e.target.value)}
                 disabled={disabled}
               />
+              {hunterDomainsRequired && !hunterDomainsProvided && (
+                <p className="text-xs text-amber-600">
+                  Add at least one domain for Hunter discovery mode.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

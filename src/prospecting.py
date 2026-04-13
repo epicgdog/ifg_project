@@ -132,6 +132,21 @@ RA_ROLE_PRESETS: dict[str, list[str]] = {
 }
 
 
+def _diag_inc(diag: dict[str, object] | None, key: str, amount: int = 1) -> None:
+    if diag is None:
+        return
+    current = int(diag.get(key, 0) or 0)
+    diag[key] = current + amount
+
+
+def _diag_add_error(diag: dict[str, object] | None, message: str) -> None:
+    if diag is None or not message.strip():
+        return
+    errors = diag.setdefault("errors", [])
+    if isinstance(errors, list) and message not in errors:
+        errors.append(message)
+
+
 def load_icp_profile(path: str | Path) -> ICPProfile:
     profile_path = Path(path)
     if not profile_path.exists():
@@ -238,6 +253,7 @@ def discover_contacts(
     limit: int,
     hunter_domains: list[str] | None = None,
     timeout_seconds: int = 60,
+    diagnostics: dict[str, object] | None = None,
 ) -> list[Contact]:
     normalized_sources = {s.strip().lower() for s in sources if s.strip()}
     contacts: list[Contact] = []
@@ -256,8 +272,10 @@ def discover_contacts(
             employee_ranges = _employee_ranges_for_min(icp_profile.min_employee_count)
 
             page = 1
+            fallback_used = False
             while len(contacts) < limit:
                 per_page = min(25, limit - len(contacts))
+                _diag_inc(diagnostics, "apollo_search_attempts")
                 batch = apollo.search_people(
                     person_titles=titles,
                     organization_num_employees_ranges=employee_ranges,
@@ -267,6 +285,47 @@ def discover_contacts(
                     per_page=per_page,
                     timeout_seconds=timeout_seconds,
                 )
+                if not batch:
+                    _diag_inc(diagnostics, "apollo_empty_batches")
+                    if apollo.last_error:
+                        _diag_inc(diagnostics, "apollo_search_failures")
+                        _diag_add_error(diagnostics, apollo.last_error)
+
+                    # Fallback once with looser constraints to avoid silent zero-results.
+                    if page == 1 and not fallback_used:
+                        fallback_used = True
+                        _diag_inc(diagnostics, "apollo_fallback_attempts")
+                        fallback_titles = list(
+                            dict.fromkeys(
+                                icp_profile.target_owner_title_keywords[:4]
+                                + icp_profile.target_referral_title_keywords[:4]
+                            )
+                        )
+                        fallback_keywords = keywords[:3] or [
+                            "construction",
+                            "contractor",
+                            "industrial",
+                        ]
+                        _diag_inc(diagnostics, "apollo_search_attempts")
+                        batch = apollo.search_people(
+                            person_titles=fallback_titles,
+                            organization_num_employees_ranges=_employee_ranges_for_min(
+                                1
+                            ),
+                            q_organization_keyword_tags=fallback_keywords,
+                            person_locations=None,
+                            page=1,
+                            per_page=per_page,
+                            timeout_seconds=timeout_seconds,
+                        )
+                        if batch:
+                            _diag_inc(diagnostics, "apollo_fallback_successes")
+                        else:
+                            _diag_inc(diagnostics, "apollo_empty_batches")
+                            if apollo.last_error:
+                                _diag_inc(diagnostics, "apollo_search_failures")
+                                _diag_add_error(diagnostics, apollo.last_error)
+
                 if not batch:
                     break
 
@@ -281,6 +340,11 @@ def discover_contacts(
                 if len(batch) < per_page:
                     break
                 page += 1
+        else:
+            _diag_add_error(
+                diagnostics,
+                "Apollo discovery skipped: APOLLO_API_KEY is missing on backend.",
+            )
 
     if "hunter" in normalized_sources and len(contacts) < limit:
         hunter = HunterProvider(settings)
@@ -318,6 +382,7 @@ def discover_referral_advocates(
     sources: list[str] | None = None,
     hunter_domains: list[str] | None = None,
     timeout_seconds: int = 60,
+    diagnostics: dict[str, object] | None = None,
 ) -> list[Contact]:
     normalized_sources = {s.strip().lower() for s in (sources or ["apollo"])}
     contacts: list[Contact] = []
@@ -336,9 +401,11 @@ def discover_referral_advocates(
             ]
             employee_ranges = _employee_ranges_for_min(icp_profile.min_employee_count)
             page = 1
+            fallback_used = False
 
             while len(contacts) < limit:
                 per_page = min(25, limit - len(contacts))
+                _diag_inc(diagnostics, "apollo_search_attempts")
                 batch = apollo.search_people(
                     person_titles=titles,
                     organization_num_employees_ranges=employee_ranges,
@@ -348,6 +415,37 @@ def discover_referral_advocates(
                     per_page=per_page,
                     timeout_seconds=timeout_seconds,
                 )
+                if not batch:
+                    _diag_inc(diagnostics, "apollo_empty_batches")
+                    if apollo.last_error:
+                        _diag_inc(diagnostics, "apollo_search_failures")
+                        _diag_add_error(diagnostics, apollo.last_error)
+
+                    if page == 1 and not fallback_used:
+                        fallback_used = True
+                        _diag_inc(diagnostics, "apollo_fallback_attempts")
+                        fallback_titles = titles[:10]
+                        fallback_keywords = ["advisor", "banker", "broker"]
+                        _diag_inc(diagnostics, "apollo_search_attempts")
+                        batch = apollo.search_people(
+                            person_titles=fallback_titles,
+                            organization_num_employees_ranges=_employee_ranges_for_min(
+                                1
+                            ),
+                            q_organization_keyword_tags=fallback_keywords,
+                            person_locations=[state],
+                            page=1,
+                            per_page=per_page,
+                            timeout_seconds=timeout_seconds,
+                        )
+                        if batch:
+                            _diag_inc(diagnostics, "apollo_fallback_successes")
+                        else:
+                            _diag_inc(diagnostics, "apollo_empty_batches")
+                            if apollo.last_error:
+                                _diag_inc(diagnostics, "apollo_search_failures")
+                                _diag_add_error(diagnostics, apollo.last_error)
+
                 if not batch:
                     break
 
@@ -363,6 +461,11 @@ def discover_referral_advocates(
                 if len(batch) < per_page:
                     break
                 page += 1
+        else:
+            _diag_add_error(
+                diagnostics,
+                "Apollo RA discovery skipped: APOLLO_API_KEY is missing on backend.",
+            )
 
     if "hunter" in normalized_sources and len(contacts) < limit:
         hunter = HunterProvider(settings)

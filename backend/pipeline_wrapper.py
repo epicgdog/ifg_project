@@ -155,10 +155,12 @@ def execute(
     emit("stage", {"stage": "ingest"})
     seed_contacts: list[Contact] | None = None
     input_paths = list(csv_paths)
+    discovery_diag: dict[str, Any] = {}
+    discovered_count = 0
 
     want_discovery = mode in ("api_discovery", "csv_plus_api")
     if want_discovery:
-        sources = prospect_sources or ["apollo"]
+        sources = prospect_sources or ["hunter"]
         if referral_advocates_only:
             discovered = discover_referral_advocates(
                 settings=settings,
@@ -167,6 +169,7 @@ def execute(
                 limit=prospect_limit,
                 sources=sources,
                 hunter_domains=hunter_domains or [],
+                diagnostics=discovery_diag,
             )
         else:
             discovered = discover_contacts(
@@ -175,7 +178,9 @@ def execute(
                 sources=sources,
                 limit=prospect_limit,
                 hunter_domains=hunter_domains or [],
+                diagnostics=discovery_diag,
             )
+        discovered_count = len(discovered)
         if input_paths:
             merged = discovered + read_contacts(input_paths)
             seed_contacts = dedupe_contacts(merged)
@@ -188,6 +193,21 @@ def execute(
         seed_contacts if seed_contacts is not None else read_contacts(input_paths)
     )
     report.total_contacts = len(contacts)
+    report.discovered_count = discovered_count
+    report.apollo_search_attempts = int(discovery_diag.get("apollo_search_attempts", 0))
+    report.apollo_search_failures = int(discovery_diag.get("apollo_search_failures", 0))
+    report.apollo_empty_batches = int(discovery_diag.get("apollo_empty_batches", 0))
+    report.apollo_fallback_attempts = int(
+        discovery_diag.get("apollo_fallback_attempts", 0)
+    )
+    report.apollo_fallback_successes = int(
+        discovery_diag.get("apollo_fallback_successes", 0)
+    )
+    discovery_errors = discovery_diag.get("errors", [])
+    if isinstance(discovery_errors, list):
+        report.discovery_errors.extend(
+            [str(e) for e in discovery_errors if str(e).strip()]
+        )
     emit(
         "progress",
         {"current": len(contacts), "total": len(contacts), "stage": "ingest"},

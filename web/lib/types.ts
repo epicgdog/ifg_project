@@ -74,6 +74,14 @@ export interface RunReport {
   avg_fit_score?: number;
   skipped_low_fit_count?: number;
   skipped_missing_linkedin_count?: number;
+  discovered_count?: number;
+  apollo_search_attempts?: number;
+  apollo_search_failures?: number;
+  apollo_empty_batches?: number;
+  apollo_fallback_attempts?: number;
+  apollo_fallback_successes?: number;
+  discovery_error_count?: number;
+  discovery_errors?: string[];
   [key: string]: unknown;
 }
 

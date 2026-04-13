@@ -116,6 +116,57 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
 
       <Card>
         <CardHeader>
+          <CardTitle>Discovery diagnostics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+            <MetricCard
+              label="Discovered"
+              value={pickMetric(r, ["discovered_count"])}
+            />
+            <MetricCard
+              label="Apollo attempts"
+              value={pickMetric(r, ["apollo_search_attempts"])}
+            />
+            <MetricCard
+              label="Apollo failures"
+              value={pickMetric(r, ["apollo_search_failures"])}
+            />
+            <MetricCard
+              label="Apollo empty batches"
+              value={pickMetric(r, ["apollo_empty_batches"])}
+            />
+            <MetricCard
+              label="Fallback attempts"
+              value={pickMetric(r, ["apollo_fallback_attempts"])}
+            />
+            <MetricCard
+              label="Fallback successes"
+              value={pickMetric(r, ["apollo_fallback_successes"])}
+            />
+          </div>
+          {Array.isArray(r.discovery_errors) && r.discovery_errors.length > 0 && (
+            <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              <div className="mb-1 font-medium">Discovery errors</div>
+              {r.discovery_errors.map((err, idx) => (
+                <div key={`${idx}-${err}`} className="leading-relaxed">
+                  - {err}
+                </div>
+              ))}
+            </div>
+          )}
+          {Number(r.apollo_search_failures || 0) > 0 &&
+            Number(r.apollo_search_attempts || 0) > 0 && (
+              <div className="mt-3 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                Apollo discovery is failing in this run. Switch source to Hunter and provide
+                domains to keep discovery running.
+              </div>
+            )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Contacts</CardTitle>
         </CardHeader>
         <CardContent>

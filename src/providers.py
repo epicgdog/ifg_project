@@ -15,6 +15,19 @@ class ApolloProvider:
     def __init__(self, settings: Settings) -> None:
         self._key = settings.apollo_api_key
         self._base = "https://api.apollo.io/api/v1"
+        self.last_status_code: int = 0
+        self.last_error: str = ""
+
+    def _clear_last_error(self) -> None:
+        self.last_status_code = 0
+        self.last_error = ""
+
+    def _set_last_error(self, status_code: int, body: str, context: str) -> None:
+        self.last_status_code = status_code
+        trimmed = " ".join((body or "").split())[:300]
+        self.last_error = (
+            f"{context}: HTTP {status_code}{f' - {trimmed}' if trimmed else ''}"
+        )
 
     @property
     def enabled(self) -> bool:
@@ -31,6 +44,7 @@ class ApolloProvider:
         timeout_seconds: int = 60,
     ) -> list[dict[str, str]]:
         if not self.enabled:
+            self._set_last_error(0, "Apollo API key missing", "mixed_people/search")
             return []
 
         payload: dict[str, Any] = {
@@ -51,7 +65,14 @@ class ApolloProvider:
             timeout=timeout_seconds,
         )
         if response.status_code >= 400:
+            self._set_last_error(
+                response.status_code,
+                response.text,
+                "mixed_people/search",
+            )
             return []
+
+        self._clear_last_error()
 
         body: dict[str, Any] = response.json()
         people = body.get("people", [])
@@ -84,6 +105,7 @@ class ApolloProvider:
         self, contact: Contact, timeout_seconds: int = 60
     ) -> dict[str, str]:
         if not self.enabled:
+            self._set_last_error(0, "Apollo API key missing", "people/match")
             return {}
 
         payload = {
@@ -104,12 +126,19 @@ class ApolloProvider:
         )
 
         if response.status_code >= 400:
+            self._set_last_error(
+                response.status_code,
+                response.text,
+                "people/match",
+            )
             fallback = self._fallback_search_person(contact, timeout_seconds)
             if fallback:
+                self._clear_last_error()
                 return fallback
             return {"apollo_error": f"{response.status_code}"}
 
         body: dict[str, Any] = response.json()
+        self._clear_last_error()
         person = body.get("person") or body.get("people", [{}])[0] or {}
         org = person.get("organization", {}) if isinstance(person, dict) else {}
 

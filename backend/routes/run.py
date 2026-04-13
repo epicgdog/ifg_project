@@ -43,7 +43,7 @@ class RunRequest(BaseModel):
     min_fit_score_for_enrich: int = 65
     referral_advocates_only: bool = True
     state: str = "CO"
-    prospect_sources: list[str] = Field(default_factory=lambda: ["apollo"])
+    prospect_sources: list[str] = Field(default_factory=lambda: ["hunter"])
     prospect_limit: int = 25
     hunter_domains: list[str] = Field(default_factory=list)
     min_ebitda: int = 0

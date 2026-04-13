@@ -29,9 +29,23 @@ export default function DemoPage() {
   const showResults = isDone;
 
   const canRun =
-    !busy &&
-    ((form.useSample || form.files.length > 0 || form.mode === "api_discovery") &&
-      (form.mode !== "api_discovery" || form.prospect_sources.length > 0));
+    (() => {
+      const hunterSelected = form.prospect_sources.includes("hunter");
+      const hunterDomainsProvided =
+        form.hunter_domains
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean).length > 0;
+      const hunterNeedsDomains =
+        form.mode === "api_discovery" && hunterSelected && !hunterDomainsProvided;
+
+      return (
+        !busy &&
+        (form.useSample || form.files.length > 0 || form.mode === "api_discovery") &&
+        (form.mode !== "api_discovery" || form.prospect_sources.length > 0) &&
+        !hunterNeedsDomains
+      );
+    })();
 
   const onRun = async () => {
     try {

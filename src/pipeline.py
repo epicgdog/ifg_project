@@ -23,9 +23,16 @@ class PipelineRunReport:
     """Report of pipeline execution metrics."""
 
     total_contacts: int = 0
+    discovered_count: int = 0
+    apollo_search_attempts: int = 0
+    apollo_search_failures: int = 0
+    apollo_empty_batches: int = 0
+    apollo_fallback_attempts: int = 0
+    apollo_fallback_successes: int = 0
     skipped_low_fit_count: int = 0
     skipped_missing_linkedin_count: int = 0
     enriched_count: int = 0
+    discovery_errors: list[str] = field(default_factory=list)
     enrichment_errors: list[str] = field(default_factory=list)
     generation_failures: list[str] = field(default_factory=list)
     review_flagged_count: int = 0
@@ -41,8 +48,15 @@ class PipelineRunReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_contacts": self.total_contacts,
+            "discovered_count": self.discovered_count,
+            "apollo_search_attempts": self.apollo_search_attempts,
+            "apollo_search_failures": self.apollo_search_failures,
+            "apollo_empty_batches": self.apollo_empty_batches,
+            "apollo_fallback_attempts": self.apollo_fallback_attempts,
+            "apollo_fallback_successes": self.apollo_fallback_successes,
             "skipped_low_fit_count": self.skipped_low_fit_count,
             "skipped_missing_linkedin_count": self.skipped_missing_linkedin_count,
+            "discovery_error_count": len(self.discovery_errors),
             "enriched_count": self.enriched_count,
             "enrichment_error_count": len(self.enrichment_errors),
             "generation_failure_count": len(self.generation_failures),
