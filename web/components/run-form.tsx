@@ -24,6 +24,7 @@ export interface RunFormValues {
   use_master_persona: boolean;
   few_shot_k: number;
   min_qualification_score: number;
+  min_fit_score_for_enrich: number;
   target_audience: TargetAudience;
   state: string;
   prospect_sources: ProspectSource[];
@@ -40,6 +41,7 @@ const DEFAULTS: RunFormValues = {
   use_master_persona: true,
   few_shot_k: 3,
   min_qualification_score: 60,
+  min_fit_score_for_enrich: 65,
   target_audience: "mixed",
   state: "CO",
   prospect_sources: ["apollo"],
@@ -59,6 +61,7 @@ export function toRunRequest(v: RunFormValues, fileIds: string[]): RunRequest {
     voice_profile_path: "data/voice_profile.json",
     few_shot_k: v.few_shot_k,
     min_qualification_score: v.min_qualification_score,
+    min_fit_score_for_enrich: v.min_fit_score_for_enrich,
     referral_advocates_only: v.target_audience === "referral_advocate",
     state: v.state,
     prospect_sources: v.prospect_sources,
@@ -167,7 +170,7 @@ export function RunForm({
               [
                 ["csv_only", "Use uploaded list"],
                 ["api_discovery", "Find new contacts"],
-                ["csv_plus_api", "Enrich uploaded list"],
+                ["csv_plus_api", "Merge uploaded + discovered"],
               ] as [RunMode, string][]
             ).map(([val, label]) => (
               <div key={val} className="flex items-center gap-2">
@@ -381,6 +384,28 @@ export function RunForm({
                 value={[v.min_qualification_score]}
                 onValueChange={(vals) =>
                   set("min_qualification_score", vals[0] ?? v.min_qualification_score)
+                }
+                disabled={disabled}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Min fit score for enrichment</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Skip contacts below this score before enrichment
+                  </p>
+                </div>
+                <Badge variant="outline">{v.min_fit_score_for_enrich}</Badge>
+              </div>
+              <Slider
+                min={0}
+                max={90}
+                step={1}
+                value={[v.min_fit_score_for_enrich]}
+                onValueChange={(vals) =>
+                  set("min_fit_score_for_enrich", vals[0] ?? v.min_fit_score_for_enrich)
                 }
                 disabled={disabled}
               />

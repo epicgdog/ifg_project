@@ -60,6 +60,14 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
   const r = done.report || {};
   const metrics = [
     { label: "Total", value: pickMetric(r, ["total", "total_contacts"]) },
+    {
+      label: "Skipped (Low fit)",
+      value: pickMetric(r, ["skipped_low_fit_count"]),
+    },
+    {
+      label: "Skipped (No LinkedIn)",
+      value: pickMetric(r, ["skipped_missing_linkedin_count"]),
+    },
     { label: "Enriched", value: pickMetric(r, ["enriched", "enriched_count"]) },
     { label: "Qualified", value: pickMetric(r, ["qualified", "qualified_count"]) },
     {
@@ -68,7 +76,7 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
     },
     {
       label: "Review flagged",
-      value: pickMetric(r, ["review_flagged", "review_flag_count"]),
+      value: pickMetric(r, ["review_flagged", "review_flagged_count", "review_flag_count"]),
     },
     {
       label: "Avg fit score",
@@ -80,7 +88,7 @@ export function ResultsPanel({ done }: { done: DoneEvent }) {
     <div className="space-y-6">
       <div>
         <h2 className="mb-3 text-lg font-semibold">Executive summary</h2>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-8">
           {metrics.map((m) => (
             <MetricCard key={m.label} label={m.label} value={m.value} />
           ))}

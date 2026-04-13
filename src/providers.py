@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import requests
@@ -103,11 +104,24 @@ class ApolloProvider:
         )
 
         if response.status_code >= 400:
+            fallback = self._fallback_search_person(contact, timeout_seconds)
+            if fallback:
+                return fallback
             return {"apollo_error": f"{response.status_code}"}
 
         body: dict[str, Any] = response.json()
         person = body.get("person") or body.get("people", [{}])[0] or {}
         org = person.get("organization", {}) if isinstance(person, dict) else {}
+
+        linkedin = _strv(person.get("linkedin_url")) or contact.linkedin
+        if not linkedin:
+            fallback = self._fallback_search_person(contact, timeout_seconds)
+            if fallback:
+                linkedin = fallback.get("linkedin", "")
+                if not _strv(person.get("id")):
+                    person["id"] = fallback.get("apollo_person_id", "")
+                if not _strv(org.get("id")):
+                    org["id"] = fallback.get("apollo_org_id", "")
 
         return {
             "email": _strv(person.get("email")),
@@ -124,7 +138,102 @@ class ApolloProvider:
             "industry": _strv(org.get("industry")) or contact.industry,
             "city": _strv(person.get("city")) or contact.city,
             "state": _strv(person.get("state")) or contact.state,
-            "linkedin": _strv(person.get("linkedin_url")) or contact.linkedin,
+            "linkedin": linkedin,
+        }
+
+    def _fallback_search_person(
+        self, contact: Contact, timeout_seconds: int
+    ) -> dict[str, str]:
+        """Best-effort Apollo search fallback to recover LinkedIn/profile ids."""
+        if not self.enabled:
+            return {}
+
+        title = (contact.title or "").strip()
+        person_titles = [title] if title else []
+
+        company_tokens = [
+            tok
+            for tok in re.split(r"\W+", (contact.company or "").lower())
+            if len(tok) >= 4
+        ][:3]
+        industry_tokens = [
+            tok
+            for tok in re.split(r"\W+", (contact.industry or "").lower())
+            if len(tok) >= 4
+        ][:2]
+        keyword_tags = list(dict.fromkeys(company_tokens + industry_tokens))
+        if not keyword_tags:
+            return {}
+
+        try:
+            candidates = self.search_people(
+                person_titles=person_titles,
+                organization_num_employees_ranges=[
+                    "1,10",
+                    "11,20",
+                    "21,50",
+                    "51,100",
+                    "101,200",
+                    "201,500",
+                    "501,1000",
+                ],
+                q_organization_keyword_tags=keyword_tags,
+                person_locations=[contact.state]
+                if (contact.state or "").strip()
+                else None,
+                page=1,
+                per_page=25,
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception:
+            return {}
+
+        best: dict[str, str] = {}
+        best_score = -1
+        for c in candidates:
+            score = 0
+            if contact.email and c.get("email", "").lower() == contact.email.lower():
+                score += 10
+            if (
+                contact.first_name
+                and c.get("first_name", "").lower() == contact.first_name.lower()
+            ):
+                score += 3
+            if (
+                contact.last_name
+                and c.get("last_name", "").lower() == contact.last_name.lower()
+            ):
+                score += 3
+            if (
+                contact.company
+                and contact.company.lower() in c.get("company", "").lower()
+            ):
+                score += 4
+            if c.get("linkedin"):
+                score += 2
+            if score > best_score:
+                best_score = score
+                best = c
+
+        if best_score < 6:
+            return {}
+
+        return {
+            "email": _strv(best.get("email")) or contact.email,
+            "title": _strv(best.get("title")) or contact.title,
+            "full_name": _strv(best.get("full_name")) or contact.full_name,
+            "first_name": _strv(best.get("first_name")) or contact.first_name,
+            "last_name": _strv(best.get("last_name")) or contact.last_name,
+            "apollo_person_id": _strv(best.get("apollo_person_id")),
+            "apollo_org_id": _strv(best.get("apollo_org_id")),
+            "company": _strv(best.get("company")) or contact.company,
+            "website": _strv(best.get("website")) or contact.website,
+            "employee_count": _strv(best.get("employee_count")),
+            "annual_revenue": _strv(best.get("annual_revenue")),
+            "industry": _strv(best.get("industry")) or contact.industry,
+            "city": _strv(best.get("city")) or contact.city,
+            "state": _strv(best.get("state")) or contact.state,
+            "linkedin": _strv(best.get("linkedin")) or contact.linkedin,
         }
 
 

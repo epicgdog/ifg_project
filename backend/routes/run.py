@@ -1,4 +1,5 @@
 """Pipeline run endpoints: POST /api/run, SSE stream, downloads, status."""
+
 from __future__ import annotations
 
 import asyncio
@@ -39,6 +40,7 @@ class RunRequest(BaseModel):
     voice_profile_path: str = "data/voice_profile.json"
     few_shot_k: int = 3
     min_qualification_score: int = 60
+    min_fit_score_for_enrich: int = 65
     referral_advocates_only: bool = True
     state: str = "CO"
     prospect_sources: list[str] = Field(default_factory=lambda: ["apollo"])
@@ -69,6 +71,11 @@ async def upload_files(files: list[UploadFile] = File(...)) -> dict[str, list[st
 def _paths_for_ids(file_ids: list[str]) -> list[str]:
     paths: list[str] = []
     for file_id in file_ids:
+        if file_id == "sample":
+            sample = Path("data/sample_contacts.csv")
+            if sample.exists():
+                paths.append(str(sample))
+            continue
         p = UPLOAD_DIR / f"{file_id}.csv"
         if p.exists():
             paths.append(str(p))
@@ -102,6 +109,7 @@ def _run_in_thread(state: RunState, payload: RunRequest) -> None:
             voice_profile_path=payload.voice_profile_path,
             few_shot_k=payload.few_shot_k,
             min_qualification_score=payload.min_qualification_score,
+            min_fit_score_for_enrich=payload.min_fit_score_for_enrich,
             referral_advocates_only=payload.referral_advocates_only,
             state=payload.state,
             prospect_sources=payload.prospect_sources,
@@ -137,9 +145,7 @@ def _run_in_thread(state: RunState, payload: RunRequest) -> None:
 @router.post("/run")
 def start_run(payload: RunRequest) -> dict[str, str]:
     state = RUNS.create()
-    thread = threading.Thread(
-        target=_run_in_thread, args=(state, payload), daemon=True
-    )
+    thread = threading.Thread(target=_run_in_thread, args=(state, payload), daemon=True)
     thread.start()
     return {
         "run_id": state.run_id,
@@ -189,9 +195,7 @@ def download_csv(run_id: str) -> FileResponse:
     path = Path(state.output_csv)
     if not path.exists():
         raise HTTPException(status_code=404, detail="csv file missing")
-    return FileResponse(
-        str(path), media_type="text/csv", filename="campaign_ready.csv"
-    )
+    return FileResponse(str(path), media_type="text/csv", filename="campaign_ready.csv")
 
 
 @router.get("/runs/{run_id}/instantly")
@@ -213,7 +217,9 @@ def get_report(run_id: str) -> dict[str, Any]:
     if state is None:
         raise HTTPException(status_code=404, detail="run not found")
     if state.report is None:
-        raise HTTPException(status_code=409, detail=f"report not available (status={state.status})")
+        raise HTTPException(
+            status_code=409, detail=f"report not available (status={state.status})"
+        )
     return state.report
 
 
@@ -229,9 +235,7 @@ def get_run(run_id: str) -> dict[str, Any]:
         "finished_at": state.finished_at,
         "error": state.error,
         "report": state.report,
-        "output_csv": (
-            f"/api/runs/{state.run_id}/csv" if state.output_csv else None
-        ),
+        "output_csv": (f"/api/runs/{state.run_id}/csv" if state.output_csv else None),
         "instantly_csv": (
             f"/api/runs/{state.run_id}/instantly" if state.instantly_csv else None
         ),

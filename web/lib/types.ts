@@ -24,6 +24,7 @@ export interface RunRequest {
   voice_profile_path: string;
   few_shot_k: number;
   min_qualification_score: number;
+  min_fit_score_for_enrich: number;
   referral_advocates_only: boolean;
   state: string;
   prospect_sources: ProspectSource[];
@@ -71,6 +72,8 @@ export interface RunReport {
   high_priority?: number;
   review_flagged?: number;
   avg_fit_score?: number;
+  skipped_low_fit_count?: number;
+  skipped_missing_linkedin_count?: number;
   [key: string]: unknown;
 }
 

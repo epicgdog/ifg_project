@@ -131,13 +131,6 @@ with st.sidebar:
         value=65,
         help="Contacts below this score are skipped BEFORE enrichment to save API credits. Set to 0 to disable filtering.",
     )
-    min_fit_score_for_enrich = st.slider(
-        "Min fit score for enrichment",
-        min_value=0,
-        max_value=90,
-        value=65,
-        help="Contacts below this score are skipped BEFORE enrichment to save API credits. Set to 0 to disable filtering.",
-    )
 
     st.header("Prospecting")
     referral_advocates_only = st.checkbox(
@@ -309,9 +302,13 @@ if run_clicked:
                 )
                 m4.metric("High Priority", report["high_priority_count"])
 
-                m5, m6 = st.columns(2)
+                m5, m6, m7 = st.columns(3)
                 m5.metric("Review Flagged", report["review_flagged_count"])
                 m6.metric("Avg Fit Score", report["avg_fit_score"])
+                m7.metric(
+                    "Skipped (No LinkedIn)",
+                    report.get("skipped_missing_linkedin_count", 0),
+                )
 
                 st.subheader("Channel Summary")
                 ch1, ch2, ch3 = st.columns(3)

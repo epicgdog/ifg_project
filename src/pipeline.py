@@ -24,6 +24,7 @@ class PipelineRunReport:
 
     total_contacts: int = 0
     skipped_low_fit_count: int = 0
+    skipped_missing_linkedin_count: int = 0
     enriched_count: int = 0
     enrichment_errors: list[str] = field(default_factory=list)
     generation_failures: list[str] = field(default_factory=list)
@@ -41,6 +42,7 @@ class PipelineRunReport:
         return {
             "total_contacts": self.total_contacts,
             "skipped_low_fit_count": self.skipped_low_fit_count,
+            "skipped_missing_linkedin_count": self.skipped_missing_linkedin_count,
             "enriched_count": self.enriched_count,
             "enrichment_error_count": len(self.enrichment_errors),
             "generation_failure_count": len(self.generation_failures),
@@ -149,6 +151,7 @@ def run_pipeline(
     icp_profile=None,
     min_qualification_score: int = 60,
     min_fit_score_for_enrich: int = 65,
+    hard_skip_missing_linkedin: bool = True,
     seed_contacts: list[Contact] | None = None,
     use_master_persona: bool = True,
     master_persona_path: str = "MASTER.md",
@@ -236,6 +239,16 @@ def run_pipeline(
             )
             for c in contacts
         ]
+
+    # Stage 2.5: Hard skip contacts without LinkedIn after enrichment
+    if hard_skip_missing_linkedin:
+        linkedin_ready: list[EnrichmentResult] = []
+        for result in enrichment_results:
+            if (result.contact.linkedin or "").strip():
+                linkedin_ready.append(result)
+            else:
+                report.skipped_missing_linkedin_count += 1
+        enrichment_results = linkedin_ready
 
     # Stage 3-5: Classify, Generate, Schedule (parallel) -> Export (serial, ordered)
     output = Path(output_path)

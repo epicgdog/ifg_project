@@ -4,6 +4,7 @@ Mirrors the flow in ``src/pipeline.py:run_pipeline`` and ``src/main.py`` so the
 backend can stream stage/progress updates over SSE, while reusing all the
 underlying business logic functions directly (no duplication).
 """
+
 from __future__ import annotations
 
 import csv
@@ -129,6 +130,7 @@ def execute(
     voice_profile_path: str = "data/voice_profile.json",
     few_shot_k: int = 3,
     min_qualification_score: int = 60,
+    min_fit_score_for_enrich: int = 65,
     referral_advocates_only: bool = False,
     state: str = "CO",
     prospect_sources: list[str] | None = None,
@@ -186,16 +188,35 @@ def execute(
         seed_contacts if seed_contacts is not None else read_contacts(input_paths)
     )
     report.total_contacts = len(contacts)
-    emit("progress", {"current": len(contacts), "total": len(contacts), "stage": "ingest"})
+    emit(
+        "progress",
+        {"current": len(contacts), "total": len(contacts), "stage": "ingest"},
+    )
+
+    # Stage 1.5: Pre-enrichment fit filter to reduce wasted enrichment calls.
+    if min_fit_score_for_enrich > 0:
+        filtered_contacts: list[Contact] = []
+        for contact in contacts:
+            classified = classify(contact)
+            if classified.fit_score >= min_fit_score_for_enrich:
+                filtered_contacts.append(contact)
+            else:
+                report.skipped_low_fit_count += 1
+        contacts = filtered_contacts
 
     # Stage 2: Enrich (optional)
     emit("stage", {"stage": "enrich"})
     enrichment_results: list[EnrichmentResult] = []
     if enrich and not dry_run:
-        orchestrator = EnrichmentOrchestrator(settings, EnrichmentConfig(
-            enable_apollo=bool(settings.apollo_api_key),
-            enable_apify=bool(settings.apify_api_token and settings.apify_linkedin_actor_id),
-        ))
+        orchestrator = EnrichmentOrchestrator(
+            settings,
+            EnrichmentConfig(
+                enable_apollo=bool(settings.apollo_api_key),
+                enable_apify=bool(
+                    settings.apify_api_token and settings.apify_linkedin_actor_id
+                ),
+            ),
+        )
         total = len(contacts)
         for idx, contact in enumerate(contacts, start=1):
             try:
@@ -220,10 +241,24 @@ def execute(
             emit("progress", {"current": idx, "total": total, "stage": "enrich"})
     else:
         enrichment_results = [
-            EnrichmentResult(contact=c, sources_applied=[], fields_updated=[], errors=[])
+            EnrichmentResult(
+                contact=c, sources_applied=[], fields_updated=[], errors=[]
+            )
             for c in contacts
         ]
-        emit("progress", {"current": len(contacts), "total": len(contacts), "stage": "enrich"})
+        emit(
+            "progress",
+            {"current": len(contacts), "total": len(contacts), "stage": "enrich"},
+        )
+
+    # Hard skip contacts with no LinkedIn after enrichment.
+    linkedin_ready: list[EnrichmentResult] = []
+    for result in enrichment_results:
+        if (result.contact.linkedin or "").strip():
+            linkedin_ready.append(result)
+        else:
+            report.skipped_missing_linkedin_count += 1
+    enrichment_results = linkedin_ready
 
     # EBITDA filter (between enrichment and classification)
     if min_ebitda and min_ebitda > 0:
@@ -232,7 +267,9 @@ def execute(
             [r.contact for r in enrichment_results], min_ebitda
         )
         kept_ids = {id(c) for c in filtered_contacts}
-        enrichment_results = [r for r in enrichment_results if id(r.contact) in kept_ids]
+        enrichment_results = [
+            r for r in enrichment_results if id(r.contact) in kept_ids
+        ]
         emit(
             "progress",
             {
@@ -311,7 +348,10 @@ def execute(
     for _, classified, _, sequence in generated:
         if classified.fit_score < 55 or not sequence.validation_passed:
             report.review_flagged_count += 1
-    emit("progress", {"current": len(generated), "total": len(generated), "stage": "validate"})
+    emit(
+        "progress",
+        {"current": len(generated), "total": len(generated), "stage": "validate"},
+    )
 
     # Stage 6: Export CSV (+ Instantly)
     emit("stage", {"stage": "export"})
@@ -368,9 +408,12 @@ def execute(
                     "generation_method": sequence.generation_method,
                     "validation_passed": "yes" if sequence.validation_passed else "no",
                     "validation_errors": "; ".join(sequence.validation_errors),
-                    "subject_1": _extract_subject(sequence.step_1),
-                    "subject_2": _extract_subject(sequence.step_2),
-                    "subject_3": _extract_subject(sequence.step_3),
+                    "subject_1": sequence.subject_1
+                    or _extract_subject(sequence.step_1),
+                    "subject_2": sequence.subject_2
+                    or _extract_subject(sequence.step_2),
+                    "subject_3": sequence.subject_3
+                    or _extract_subject(sequence.step_3),
                 }
             )
             count += 1
@@ -379,7 +422,10 @@ def execute(
         export_instantly_campaign(str(output), instantly_path)
     except Exception as e:
         # Non-fatal; frontend can surface this
-        emit("progress", {"current": 0, "total": 0, "stage": f"instantly_export_failed:{e}"})
+        emit(
+            "progress",
+            {"current": 0, "total": 0, "stage": f"instantly_export_failed:{e}"},
+        )
 
     report.processing_time_seconds = time.time() - start_time
     report.avg_fit_score = sum(fit_scores) / len(fit_scores) if fit_scores else 0
