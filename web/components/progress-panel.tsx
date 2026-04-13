@@ -155,6 +155,26 @@ export function ProgressPanel({
           </div>
         )}
 
+        {stream.activities.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-foreground">Live activity</div>
+            <div className="max-h-44 space-y-1 overflow-auto rounded-md border bg-muted/20 p-2">
+              {stream.activities.slice(0, 14).map((a, idx) => (
+                <div
+                  key={`${idx}-${a.source}-${a.message}`}
+                  className="text-xs text-muted-foreground"
+                >
+                  <span className="font-medium text-foreground/80">[{a.source}]</span>{" "}
+                  {a.message}
+                  {a.company ? (
+                    <span className="text-muted-foreground/80"> ({a.company})</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Error state */}
         {stream.status === "error" && (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">

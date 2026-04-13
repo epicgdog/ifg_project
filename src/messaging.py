@@ -30,10 +30,75 @@ def _research_block(contact: Any) -> str:
         try:
             facts = json.loads(facts_json)
             if isinstance(facts, dict):
-                for key in ("company_founded", "company_size", "company_context", "team_title"):
+                for key in (
+                    "company_founded",
+                    "company_size",
+                    "company_context",
+                    "team_title",
+                ):
                     if facts.get(key):
                         value = str(facts[key])[:200]
                         lines.append(f"- {key.replace('_', ' ').title()}: {value}")
+
+                # Prefer grounded page-level hooks when available.
+                page_level = facts.get("page_level_personalization")
+                if isinstance(page_level, dict):
+                    verified = page_level.get("verified_facts")
+                    if isinstance(verified, list):
+                        added = 0
+                        for vf in verified:
+                            if not isinstance(vf, dict):
+                                continue
+                            fact = str(vf.get("fact") or "").strip()
+                            source_url = str(vf.get("source_url") or "").strip()
+                            if not fact:
+                                continue
+                            if source_url:
+                                lines.append(
+                                    f"- Grounded fact: {fact[:180]} (source: {source_url[:140]})"
+                                )
+                            else:
+                                lines.append(f"- Grounded fact: {fact[:180]}")
+                            added += 1
+                            if added >= 3:
+                                break
+
+                    angles = page_level.get("personalization_angles")
+                    if isinstance(angles, list):
+                        angle_lines = [
+                            str(a).strip()[:140] for a in angles if str(a).strip()
+                        ][:3]
+                        for angle in angle_lines:
+                            lines.append(f"- Personalization angle: {angle}")
+
+                reasoned = facts.get("reasoned_personalization")
+                if isinstance(reasoned, dict):
+                    hooks = reasoned.get("top_personalization_hooks")
+                    if isinstance(hooks, list):
+                        added = 0
+                        for h in hooks:
+                            if not isinstance(h, dict):
+                                continue
+                            fact = str(h.get("fact") or "").strip()
+                            why = str(h.get("why_it_matters") or "").strip()
+                            src = str(h.get("source_url") or "").strip()
+                            if not fact:
+                                continue
+                            snippet = f"{fact[:160]}"
+                            if why:
+                                snippet += f" | Why: {why[:120]}"
+                            if src:
+                                snippet += f" | Source: {src[:120]}"
+                            lines.append(f"- Hook: {snippet}")
+                            added += 1
+                            if added >= 2:
+                                break
+
+                evidence_pages = facts.get("source_evidence_pages")
+                if isinstance(evidence_pages, list) and evidence_pages:
+                    lines.append(
+                        f"- Grounded evidence pages reviewed: {len(evidence_pages)}"
+                    )
         except (ValueError, TypeError):
             pass
 
@@ -45,8 +110,8 @@ def _research_block(contact: Any) -> str:
         return ""
 
     header = (
-        "\nResearch Signals (use 1-2 of these naturally in step 1 or 2; do NOT list them verbatim "
-        "and do NOT invent details not listed here):"
+        "\nResearch Signals (you MUST use 1-2 of these naturally in step 1 or 2. "
+        "Do NOT list them verbatim and do NOT invent details not listed here):"
     )
     return header + "\n" + "\n".join(lines) + "\n"
 
@@ -125,10 +190,18 @@ def build_sequence_prompt(
     # Dynamic story injection — select the single best-matching founder story.
     selector = get_story_selector()
     matched_stories = selector.select(
-        context_text=context_text if use_master_persona else " ".join([
-            c.title, c.company, c.industry, c.notes,
-            item.audience_reason, item.fit_reason,
-        ]),
+        context_text=context_text
+        if use_master_persona
+        else " ".join(
+            [
+                c.title,
+                c.company,
+                c.industry,
+                c.notes,
+                item.audience_reason,
+                item.fit_reason,
+            ]
+        ),
         audience=item.audience,
         step=1,
         k=1,
@@ -188,6 +261,7 @@ Output Requirements:
 - Each step must be 80-150 words
 - Each step must have exactly one CTA question
 - Keep it human, specific, and direct
+- If research signals are present, reference at least one concrete signal in step_1 or step_2
 - Avoid spam lines like "just checking in" or "hope you're well"
 - Avoid copying any example sentence verbatim
 - Sign as: {voice_profile.name}

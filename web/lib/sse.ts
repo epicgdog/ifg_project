@@ -1,7 +1,13 @@
 "use client";
 import * as React from "react";
 import { streamUrl } from "./api";
-import type { DoneEvent, ProgressEvent, RunStage, RunStatus } from "./types";
+import type {
+  ActivityEvent,
+  DoneEvent,
+  ProgressEvent,
+  RunStage,
+  RunStatus,
+} from "./types";
 
 export interface RunStreamState {
   stage: RunStage | null;
@@ -10,6 +16,7 @@ export interface RunStreamState {
   report: DoneEvent | null;
   error: string | null;
   completedStages: RunStage[];
+  activities: ActivityEvent[];
 }
 
 const initial: RunStreamState = {
@@ -19,6 +26,7 @@ const initial: RunStreamState = {
   report: null,
   error: null,
   completedStages: [],
+  activities: [],
 };
 
 export function useRunStream(runId: string | null): RunStreamState {
@@ -80,6 +88,18 @@ export function useRunStream(runId: string | null): RunStreamState {
       es?.close();
     };
 
+    const onActivity = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as ActivityEvent;
+        setState((s) => ({
+          ...s,
+          activities: [data, ...s.activities].slice(0, 120),
+        }));
+      } catch {
+        /* noop */
+      }
+    };
+
     const onError = (e: Event) => {
       const data = (e as MessageEvent).data;
       const msg = typeof data === "string" ? data : "Stream error";
@@ -89,6 +109,7 @@ export function useRunStream(runId: string | null): RunStreamState {
 
     es.addEventListener("stage", onStage as EventListener);
     es.addEventListener("progress", onProgress as EventListener);
+    es.addEventListener("activity", onActivity as EventListener);
     es.addEventListener("done", onDone as EventListener);
     es.addEventListener("error", onError as EventListener);
 

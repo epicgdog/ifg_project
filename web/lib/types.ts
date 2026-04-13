@@ -1,11 +1,13 @@
 export type RunMode = "csv_only" | "api_discovery" | "csv_plus_api";
 
-export type ProspectSource = "apollo" | "hunter";
+export type ProspectSource = "apollo" | "hunter" | "linkedin_sales_nav";
 
 export interface ConfigHealth {
   openrouter: boolean;
   apollo: boolean;
   hunter: boolean;
+  serper?: boolean;
+  sales_navigator?: boolean;
   apify: boolean;
   model: string;
 }
@@ -69,6 +71,15 @@ export interface ProgressEvent {
   current: number;
   total: number;
   stage: string;
+}
+
+export interface ActivityEvent {
+  stage: string;
+  source: string;
+  message: string;
+  row_id?: string;
+  contact?: string;
+  company?: string;
 }
 
 export interface RunReport {

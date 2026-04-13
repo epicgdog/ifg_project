@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .config import Settings
 from .models import Contact
-from .providers import ApolloProvider, HunterProvider
+from .providers import ApolloProvider, HunterProvider, SerperProvider
 
 
 @dataclass
@@ -370,6 +370,48 @@ def discover_contacts(
                     if len(contacts) >= limit:
                         break
 
+    # LinkedIn Sales Navigator-style sourcing via Serper operators
+    if "linkedin_sales_nav" in normalized_sources and len(contacts) < limit:
+        serper = SerperProvider(settings)
+        if serper.enabled:
+            remaining = max(0, limit - len(contacts))
+            title_hints = list(
+                dict.fromkeys(
+                    icp_profile.target_owner_title_keywords[:4]
+                    + icp_profile.target_referral_title_keywords[:4]
+                )
+            )
+            locations = icp_profile.target_states[:3] or ["US"]
+            per_query = max(5, min(20, remaining))
+
+            for location in locations:
+                if len(contacts) >= limit:
+                    break
+                for title in title_hints:
+                    if len(contacts) >= limit:
+                        break
+                    profiles = serper.search_linkedin_profiles(
+                        title=title,
+                        location=location,
+                        company=None,
+                        num=per_query,
+                    )
+                    for item in profiles:
+                        item.setdefault(
+                            "notes",
+                            "Sourced via LinkedIn Sales Navigator-style search",
+                        )
+                        contacts.append(
+                            _to_contact(
+                                item,
+                                source="prospect:linkedin_sales_nav",
+                                index=index,
+                            )
+                        )
+                        index += 1
+                        if len(contacts) >= limit:
+                            break
+
     return dedupe_contacts(contacts)[:limit]
 
 
@@ -496,6 +538,36 @@ def discover_referral_advocates(
                         break
                 if len(contacts) >= limit:
                     break
+
+    if "linkedin_sales_nav" in normalized_sources and len(contacts) < limit:
+        serper = SerperProvider(settings)
+        if serper.enabled:
+            role_titles = get_ra_role_titles(role_keys)[:12]
+            remaining = max(0, limit - len(contacts))
+            per_query = max(5, min(20, remaining))
+            for role in role_titles:
+                if len(contacts) >= limit:
+                    break
+                profiles = serper.search_linkedin_profiles(
+                    title=role,
+                    location=state,
+                    company=None,
+                    num=per_query,
+                )
+                for item in profiles:
+                    item["notes"] = (
+                        "Sourced via LinkedIn Sales Navigator-style RA search"
+                    )
+                    contacts.append(
+                        _to_contact(
+                            item,
+                            source="prospect:linkedin_sales_nav_ra",
+                            index=index,
+                        )
+                    )
+                    index += 1
+                    if len(contacts) >= limit:
+                        break
 
     for contact in contacts:
         if not contact.state:

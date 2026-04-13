@@ -261,6 +261,18 @@ def execute(
                 research_result = research_orchestrator.research_contact(
                     contact, depth=research_depth
                 )
+                for item in research_result.activity_log[:20]:
+                    emit(
+                        "activity",
+                        {
+                            "stage": "research",
+                            "source": item.get("source", "research"),
+                            "message": item.get("message", ""),
+                            "row_id": contact.row_id,
+                            "contact": contact.full_name,
+                            "company": contact.company,
+                        },
+                    )
                 researched_contacts.append(research_result.contact)
                 report.research_queries_serper += research_result.serper_queries_used
                 report.research_websites_scraped += research_result.websites_scraped

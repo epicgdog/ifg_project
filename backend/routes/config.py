@@ -1,4 +1,5 @@
 """Config / health endpoints."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -16,6 +17,8 @@ def config_health() -> dict[str, object]:
         "openrouter": bool(settings.openrouter_api_key),
         "apollo": bool(settings.apollo_api_key),
         "hunter": bool(settings.hunter_api_key),
+        "serper": bool(settings.serper_api_key),
+        "sales_navigator": bool(settings.serper_api_key),
         "apify": bool(settings.apify_api_token and settings.apify_linkedin_actor_id),
         "model": settings.openrouter_model,
     }

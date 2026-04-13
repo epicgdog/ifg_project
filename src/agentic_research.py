@@ -78,6 +78,7 @@ class ResearchResult:
     serper_queries_used: int = 0
     websites_scraped: int = 0
     emails_found: int = 0
+    activity_log: list[dict[str, str]] = field(default_factory=list)
 
 
 class AgenticResearchOrchestrator:
@@ -141,6 +142,7 @@ class AgenticResearchOrchestrator:
         contact.research_status = "started"
         sources_used: list[str] = []
         errors: list[str] = []
+        activity_log: list[dict[str, str]] = []
         serper_queries = 0
         websites_scraped = 0
         emails_found = 0
@@ -152,6 +154,31 @@ class AgenticResearchOrchestrator:
             if discovery_data:
                 sources_used.append("discovery")
                 serper_queries += discovery_data.get("queries_used", 0)
+                activity_log.append(
+                    {
+                        "source": "serper",
+                        "message": (
+                            f"Discovery complete for {contact.company or contact.full_name}: "
+                            f"{discovery_data.get('queries_used', 0)} queries"
+                        ),
+                    }
+                )
+                for query in discovery_data.get("person_search_queries", [])[:8]:
+                    activity_log.append(
+                        {
+                            "source": "serper",
+                            "message": f"Query: {query}",
+                        }
+                    )
+                for page in discovery_data.get("evidence_pages", [])[:4]:
+                    url = str(page.get("url", "") or "").strip()
+                    if url:
+                        activity_log.append(
+                            {
+                                "source": "web",
+                                "message": f"Fetched evidence page: {url}",
+                            }
+                        )
 
             # Agent 2: Company Website (skip if minimal depth)
             company_data: dict[str, Any] = {}
@@ -161,6 +188,14 @@ class AgenticResearchOrchestrator:
                 if company_data:
                     sources_used.append("company_website")
                     websites_scraped += company_data.get("pages_scraped", 1)
+                    website = contact.website or discovery_data.get("website_found", "")
+                    if website:
+                        activity_log.append(
+                            {
+                                "source": "website",
+                                "message": f"Scraped company site: {website}",
+                            }
+                        )
 
             # Agent 3: Person Enrichment (standard and deep only)
             person_data: dict[str, Any] = {}
@@ -174,6 +209,13 @@ class AgenticResearchOrchestrator:
                 )
                 if person_data:
                     sources_used.append("person_enrichment")
+                    if person_data.get("identity_verified"):
+                        activity_log.append(
+                            {
+                                "source": "person_agent",
+                                "message": "Identity cross-reference validated",
+                            }
+                        )
 
             # Agent 4: Email Discovery
             contact.research_status = "email_discovery"
@@ -181,6 +223,28 @@ class AgenticResearchOrchestrator:
             if email_data:
                 sources_used.append("email_discovery")
                 emails_found += email_data.get("emails_found", 0)
+                domain = email_data.get("domain_searched", "")
+                if domain:
+                    activity_log.append(
+                        {
+                            "source": "hunter",
+                            "message": f"Domain searched for email: {domain}",
+                        }
+                    )
+                if email_data.get("verified"):
+                    activity_log.append(
+                        {
+                            "source": "hunter",
+                            "message": "Verified email identified",
+                        }
+                    )
+                elif email_data.get("pattern_match"):
+                    activity_log.append(
+                        {
+                            "source": "email_inference",
+                            "message": "Email inferred from domain pattern",
+                        }
+                    )
 
             # Agent 5: Classification
             contact.research_status = "classification"
@@ -193,6 +257,15 @@ class AgenticResearchOrchestrator:
             classification = self._run_classifier_agent(contact, all_data)
             if classification:
                 sources_used.append("classification")
+                activity_log.append(
+                    {
+                        "source": "classifier",
+                        "message": (
+                            f"Audience confidence {contact.audience_confidence:.2f}, "
+                            f"maturity {contact.company_maturity_score}"
+                        ),
+                    }
+                )
 
             # Final status
             contact.research_status = "complete"
@@ -208,6 +281,7 @@ class AgenticResearchOrchestrator:
                 serper_queries_used=serper_queries,
                 websites_scraped=websites_scraped,
                 emails_found=emails_found,
+                activity_log=activity_log,
             )
 
         except Exception as e:
@@ -221,6 +295,7 @@ class AgenticResearchOrchestrator:
                 serper_queries_used=serper_queries,
                 websites_scraped=websites_scraped,
                 emails_found=emails_found,
+                activity_log=activity_log,
             )
 
     def _run_discovery_agent(

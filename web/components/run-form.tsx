@@ -127,6 +127,9 @@ function helperForSource(source: ProspectSource): string {
   if (source === "hunter") {
     return "Works on free plans. Needs domains and usually returns email/name/title first.";
   }
+  if (source === "linkedin_sales_nav") {
+    return "Sales Navigator-style people discovery using LinkedIn query operators.";
+  }
   return "Richer company + LinkedIn data when your Apollo plan allows people search.";
 }
 
@@ -338,7 +341,7 @@ export function RunForm({
             <div className="space-y-2">
               <Label>Contact sources</Label>
               <div className="flex flex-col gap-2">
-                {(["hunter", "apollo"] as ProspectSource[]).map((src) => (
+                {(["hunter", "apollo", "linkedin_sales_nav"] as ProspectSource[]).map((src) => (
                   <div key={src} className="flex items-center gap-2">
                     <Checkbox
                       id={`src-${src}`}

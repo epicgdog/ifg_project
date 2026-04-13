@@ -4,10 +4,22 @@ import { Badge } from "@/components/ui/badge";
 import { useConfigHealth } from "@/hooks/use-config-health";
 import { cn } from "@/lib/utils";
 
-const PROVIDERS: Array<{ key: "openrouter" | "apollo" | "hunter" | "apify"; label: string; required?: boolean }> = [
+const PROVIDERS: Array<{
+  key:
+    | "openrouter"
+    | "apollo"
+    | "hunter"
+    | "serper"
+    | "sales_navigator"
+    | "apify";
+  label: string;
+  required?: boolean;
+}> = [
   { key: "openrouter", label: "OpenRouter (LLM)", required: true },
   { key: "apollo", label: "Apollo (contact search)" },
   { key: "hunter", label: "Hunter (email lookup)" },
+  { key: "serper", label: "Serper (web research)" },
+  { key: "sales_navigator", label: "LinkedIn Sales Navigator" },
   { key: "apify", label: "Apify (LinkedIn enrichment)" },
 ];
 
