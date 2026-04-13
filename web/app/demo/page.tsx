@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { Play, Loader2 } from "lucide-react";
+import { Play, Loader2, ArrowDown } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import {
   RunForm,
@@ -21,9 +21,12 @@ export default function DemoPage() {
   const [startedAt, setStartedAt] = React.useState<number | null>(null);
   const stream = useRunStream(run.runId);
 
+  const resultsRef = React.useRef<HTMLDivElement>(null);
+
   const busy = run.status === "uploading" || run.status === "running";
+  const isDone = stream.status === "done" && !!stream.report;
   const showProgress = busy || stream.status === "running" || stream.status === "error";
-  const showResults = stream.status === "done" && stream.report;
+  const showResults = isDone;
 
   const canRun =
     !busy &&
@@ -73,18 +76,31 @@ export default function DemoPage() {
         </section>
 
         <section className="flex flex-col items-start gap-2">
-          <Button size="lg" onClick={onRun} disabled={!canRun}>
-            {busy ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Running…
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4" /> Run pipeline
-              </>
-            )}
-          </Button>
-          {!busy && (
+          {isDone ? (
+            <Button
+              size="lg"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20"
+              onClick={() =>
+                resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              <ArrowDown className="h-4 w-4" />
+              Review Generated Sequences
+            </Button>
+          ) : (
+            <Button size="lg" onClick={onRun} disabled={!canRun}>
+              {busy ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Running…
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" /> Run pipeline
+                </>
+              )}
+            </Button>
+          )}
+          {!busy && !isDone && (
             <p className="text-xs text-muted-foreground">
               Expect 30–90 s depending on contact count.
             </p>
@@ -106,7 +122,7 @@ export default function DemoPage() {
         )}
 
         {showResults && stream.report && (
-          <section>
+          <section ref={resultsRef} className="scroll-mt-6">
             <h2 className="mb-4 text-lg font-semibold">Results</h2>
             <ResultsPanel done={stream.report} />
           </section>

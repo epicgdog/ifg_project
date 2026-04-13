@@ -204,6 +204,7 @@ class EnrichmentOrchestrator:
                 )
 
         # Apollo enrichment
+        apollo_linkedin: str = ""
         if self.config.enable_apollo and self.apollo.enabled:
             try:
                 apollo_data = self._with_retry(
@@ -213,15 +214,17 @@ class EnrichmentOrchestrator:
                 )
                 if apollo_data:
                     enrichments["apollo"] = apollo_data
+                    apollo_linkedin = apollo_data.get("linkedin", "")
             except Exception as e:
                 errors.append(f"apollo:{str(e)}")
 
-        # Apify LinkedIn enrichment
-        if self.config.enable_apify and self.apify.enabled and contact.linkedin:
+        # Apify LinkedIn enrichment — use Apollo-found URL if CSV didn't have one
+        linkedin_url = contact.linkedin or apollo_linkedin
+        if self.config.enable_apify and self.apify.enabled and linkedin_url:
             try:
                 apify_results = self._with_retry(
                     self.apify.scrape_profiles,
-                    [contact.linkedin],
+                    [linkedin_url],
                     self.config.timeout_seconds,
                 )
                 if apify_results:

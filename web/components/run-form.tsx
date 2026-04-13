@@ -14,16 +14,17 @@ import { Badge } from "@/components/ui/badge";
 import type { ProspectSource, RunMode, RunRequest } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+export type TargetAudience = "owner" | "referral_advocate" | "mixed";
+
 export interface RunFormValues {
   mode: RunMode;
   files: File[];
   useSample: boolean;
-  dry_run: boolean;
   enrich: boolean;
   use_master_persona: boolean;
   few_shot_k: number;
   min_qualification_score: number;
-  referral_advocates_only: boolean;
+  target_audience: TargetAudience;
   state: string;
   prospect_sources: ProspectSource[];
   prospect_limit: number;
@@ -35,12 +36,11 @@ const DEFAULTS: RunFormValues = {
   mode: "csv_only",
   files: [],
   useSample: false,
-  dry_run: true,
   enrich: true,
   use_master_persona: true,
   few_shot_k: 3,
   min_qualification_score: 60,
-  referral_advocates_only: false,
+  target_audience: "mixed",
   state: "CO",
   prospect_sources: ["apollo"],
   prospect_limit: 25,
@@ -52,14 +52,14 @@ export function toRunRequest(v: RunFormValues, fileIds: string[]): RunRequest {
   return {
     mode: v.mode,
     csv_file_ids: v.useSample ? ["sample"] : fileIds,
-    dry_run: v.dry_run,
+    dry_run: false,
     enrich: v.enrich,
     use_master_persona: v.use_master_persona,
     master_persona_path: "MASTER.md",
     voice_profile_path: "data/voice_profile.json",
     few_shot_k: v.few_shot_k,
     min_qualification_score: v.min_qualification_score,
-    referral_advocates_only: v.referral_advocates_only,
+    referral_advocates_only: v.target_audience === "referral_advocate",
     state: v.state,
     prospect_sources: v.prospect_sources,
     prospect_limit: v.prospect_limit,
@@ -89,6 +89,24 @@ function AdvancedAccordion({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+const AUDIENCE_OPTIONS: { value: TargetAudience; label: string; description: string }[] = [
+  {
+    value: "mixed",
+    label: "Mixed List (Auto-detect)",
+    description: "Classify each contact automatically",
+  },
+  {
+    value: "owner",
+    label: "Blue-Collar Owners",
+    description: ">$3M EBITDA target profile",
+  },
+  {
+    value: "referral_advocate",
+    label: "Referral Advocates (RAs)",
+    description: "Advisors, bankers, and brokers",
+  },
+];
 
 export function RunForm({
   value,
@@ -129,6 +147,8 @@ export function RunForm({
     set("prospect_sources", next);
   };
 
+  const ownerFieldsDisabled = disabled || v.target_audience === "referral_advocate";
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       {/* Column 1: Data Source */}
@@ -159,7 +179,6 @@ export function RunForm({
             ))}
           </RadioGroup>
 
-          {/* Drop zone + "use sample" anchored together */}
           <div className="space-y-2">
             <div
               {...getRootProps()}
@@ -210,6 +229,7 @@ export function RunForm({
                     onClick={() => removeFile(i)}
                     className="text-muted-foreground hover:text-foreground"
                     aria-label={`Remove ${f.name}`}
+                    disabled={disabled}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -220,53 +240,69 @@ export function RunForm({
         </CardContent>
       </Card>
 
-      {/* Column 2: Target ICP */}
+      {/* Column 2: Target Audience */}
       <Card>
         <CardHeader>
-          <CardTitle>Target ICP</CardTitle>
+          <CardTitle>Target Audience</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="referral-only">Referral advocates only</Label>
-            <Switch
-              id="referral-only"
-              checked={v.referral_advocates_only}
-              onCheckedChange={(c) => set("referral_advocates_only", c)}
-              disabled={disabled}
-            />
-          </div>
+          <RadioGroup
+            value={v.target_audience}
+            onValueChange={(val) => set("target_audience", val as TargetAudience)}
+            disabled={disabled}
+            className="gap-3"
+          >
+            {AUDIENCE_OPTIONS.map(({ value: val, label, description }) => (
+              <div key={val} className="flex items-start gap-2.5">
+                <RadioGroupItem value={val} id={`audience-${val}`} className="mt-0.5" />
+                <div>
+                  <Label htmlFor={`audience-${val}`} className="cursor-pointer leading-tight">
+                    {label}
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+                </div>
+              </div>
+            ))}
+          </RadioGroup>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="state">State</Label>
-            <Input
-              id="state"
-              value={v.state}
-              onChange={(e) => set("state", e.target.value.toUpperCase().slice(0, 2))}
-              disabled={disabled}
-              maxLength={2}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="min-ebitda">Min. EBITDA</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                $
-              </span>
+          <div
+            className={cn(
+              "space-y-4 transition-opacity",
+              ownerFieldsDisabled && !disabled && "opacity-40 pointer-events-none"
+            )}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="state">State</Label>
               <Input
-                id="min-ebitda"
-                type="number"
-                min={0}
-                step={100000}
-                value={v.min_ebitda}
-                onChange={(e) => set("min_ebitda", Number(e.target.value) || 0)}
-                disabled={disabled}
-                className="pl-7"
+                id="state"
+                value={v.state}
+                onChange={(e) => set("state", e.target.value.toUpperCase().slice(0, 2))}
+                disabled={ownerFieldsDisabled}
+                maxLength={2}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Estimated from annual revenue × 0.15
-            </p>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="min-ebitda">Min. EBITDA</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                  $
+                </span>
+                <Input
+                  id="min-ebitda"
+                  type="number"
+                  min={0}
+                  step={100000}
+                  value={v.min_ebitda}
+                  onChange={(e) => set("min_ebitda", Number(e.target.value) || 0)}
+                  disabled={ownerFieldsDisabled}
+                  className="pl-7"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Estimated from annual revenue × 0.15
+              </p>
+            </div>
           </div>
 
           <AdvancedAccordion>
@@ -311,6 +347,44 @@ export function RunForm({
                 disabled={disabled}
               />
             </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Example density</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Voice examples per email step</p>
+                </div>
+                <Badge variant="outline">{v.few_shot_k}</Badge>
+              </div>
+              <Slider
+                min={1}
+                max={5}
+                step={1}
+                value={[v.few_shot_k]}
+                onValueChange={(vals) => set("few_shot_k", vals[0] ?? v.few_shot_k)}
+                disabled={disabled}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Qualification threshold</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Drop contacts scoring below</p>
+                </div>
+                <Badge variant="outline">{v.min_qualification_score}</Badge>
+              </div>
+              <Slider
+                min={40}
+                max={90}
+                step={1}
+                value={[v.min_qualification_score]}
+                onValueChange={(vals) =>
+                  set("min_qualification_score", vals[0] ?? v.min_qualification_score)
+                }
+                disabled={disabled}
+              />
+            </div>
           </AdvancedAccordion>
         </CardContent>
       </Card>
@@ -321,23 +395,12 @@ export function RunForm({
           <CardTitle>AI Generation</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="dry-run">Dry run</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Skip LLM, use placeholder text</p>
-            </div>
-            <Switch
-              id="dry-run"
-              checked={v.dry_run}
-              onCheckedChange={(c) => set("dry_run", c)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <Label htmlFor="enrich">Enrichment</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Pull LinkedIn & company data</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Find missing LinkedIn and company data
+              </p>
             </div>
             <Switch
               id="enrich"
@@ -347,53 +410,17 @@ export function RunForm({
             />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <Label htmlFor="master-persona">Brand voice</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Apply MASTER persona guidelines</p>
+              <Label htmlFor="master-persona">Apply Kory Mitchell&#39;s Voice</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Write authentic, blue-collar founder outreach
+              </p>
             </div>
             <Switch
               id="master-persona"
               checked={v.use_master_persona}
               onCheckedChange={(c) => set("use_master_persona", c)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Example density</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Reference emails for tone matching</p>
-              </div>
-              <Badge variant="outline">{v.few_shot_k}</Badge>
-            </div>
-            <Slider
-              min={1}
-              max={5}
-              step={1}
-              value={[v.few_shot_k]}
-              onValueChange={(vals) => set("few_shot_k", vals[0] ?? v.few_shot_k)}
-              disabled={disabled}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Qualification threshold</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Drop contacts scoring below</p>
-              </div>
-              <Badge variant="outline">{v.min_qualification_score}</Badge>
-            </div>
-            <Slider
-              min={40}
-              max={90}
-              step={1}
-              value={[v.min_qualification_score]}
-              onValueChange={(vals) =>
-                set("min_qualification_score", vals[0] ?? v.min_qualification_score)
-              }
               disabled={disabled}
             />
           </div>
